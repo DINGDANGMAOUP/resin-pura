@@ -1,5 +1,11 @@
-package com.github.dingdangmaoup.resinpura.toolWindow
+package com.github.dingdangmaoup.resin.pura.toolWindow
 
+import com.github.dingdangmaoup.resin.pura.MyBundle
+import com.github.dingdangmaoup.resin.pura.PluginBundle
+import com.github.dingdangmaoup.resin.pura.services.MyProjectService
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationType
+import com.intellij.notification.Notifications
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
@@ -8,8 +14,6 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
-import com.github.dingdangmaoup.resinpura.MyBundle
-import com.github.dingdangmaoup.resinpura.services.MyProjectService
 import javax.swing.JButton
 
 
@@ -37,6 +41,13 @@ class MyToolWindowFactory : ToolWindowFactory {
             add(label)
             add(JButton(MyBundle.message("shuffle")).apply {
                 addActionListener {
+                    Notifications.Bus.notify(
+                        Notification(
+                            "rp_msg",
+                            PluginBundle.message("resin.application.server.name"),
+                            NotificationType.INFORMATION
+                        )
+                    )
                     label.text = MyBundle.message("randomLabel", service.getRandomNumber())
                 }
             })
