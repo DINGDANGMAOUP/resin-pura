@@ -1,9 +1,9 @@
-package com.github.dingdangmaoup.resin.pura.services
+package com.dingdangmaoup.resin.pura.services
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.github.dingdangmaoup.resin.pura.MyBundle
+import com.dingdangmaoup.resin.pura.MyBundle
 
 @Service(Service.Level.PROJECT)
 class MyProjectService(project: Project) {

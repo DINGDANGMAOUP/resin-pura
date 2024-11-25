@@ -1,4 +1,4 @@
-package com.github.dingdangmaoup.resin.pura.listeners
+package com.dingdangmaoup.resin.pura.listeners
 
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.diagnostic.thisLogger

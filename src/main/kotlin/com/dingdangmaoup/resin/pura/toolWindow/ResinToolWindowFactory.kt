@@ -1,21 +1,25 @@
-package com.github.dingdangmaoup.resin.pura.toolWindow
+package com.dingdangmaoup.resin.pura.toolWindow
 
+import com.dingdangmaoup.resin.pura.IconBundle
+import com.dingdangmaoup.resin.pura.ui.Login
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.components.JBPanel
+import com.intellij.ui.content.ContentFactory
+import javax.swing.Icon
 
-class ResinToolWindowFactory:ToolWindowFactory{
+class ResinToolWindowFactory : ToolWindowFactory {
+    private var login = Login()
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-      thisLogger().warn("project: $project, toolWindow: $toolWindow")
+        thisLogger().warn("project: $project, toolWindow: $toolWindow")
+        val content = ContentFactory.getInstance().createContent(login.loginContent, null, false)
+        toolWindow.contentManager.addContent(content)
     }
 
-    override fun shouldBeAvailable(project: Project)=true
+    override val icon: Icon
+        get() = IconBundle.ResinIcon
 
-    class ResinToolWindow(toolWindow: ToolWindow){
-        fun getContent()=JBPanel<JBPanel<*>>().apply{
-            
-        }
-    }
+    override fun shouldBeAvailable(project: Project) = true
+
 }

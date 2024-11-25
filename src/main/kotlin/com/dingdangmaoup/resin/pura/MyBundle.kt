@@ -1,4 +1,4 @@
-package com.github.dingdangmaoup.resin.pura
+package com.dingdangmaoup.resin.pura
 
 import com.intellij.DynamicBundle
 import org.jetbrains.annotations.NonNls

@@ -1,8 +1,8 @@
-package com.github.dingdangmaoup.resin.pura.toolWindow
+package com.dingdangmaoup.resin.pura.toolWindow
 
-import com.github.dingdangmaoup.resin.pura.MyBundle
-import com.github.dingdangmaoup.resin.pura.PluginBundle
-import com.github.dingdangmaoup.resin.pura.services.MyProjectService
+import com.dingdangmaoup.resin.pura.MyBundle
+import com.dingdangmaoup.resin.pura.PluginBundle
+import com.dingdangmaoup.resin.pura.services.MyProjectService
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
@@ -15,6 +15,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
 import javax.swing.JButton
+import javax.swing.JTextField
 
 
 class MyToolWindowFactory : ToolWindowFactory {
@@ -37,14 +38,16 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         fun getContent() = JBPanel<JBPanel<*>>().apply {
             val label = JBLabel(MyBundle.message("randomLabel", "?"))
-
+            add(JTextField().apply {
+                text = PluginBundle.message("login.password.label","123")
+            })
             add(label)
             add(JButton(MyBundle.message("shuffle")).apply {
                 addActionListener {
                     Notifications.Bus.notify(
                         Notification(
                             "rp_msg",
-                            PluginBundle.message("resin.application.server.name"),
+                            PluginBundle.message("login.password.label"),
                             NotificationType.INFORMATION
                         )
                     )
