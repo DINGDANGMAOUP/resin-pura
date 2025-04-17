@@ -1,0 +1,20 @@
+<idea-plugin>
+    <name>Resin-Pura</name>
+    <id>com.dingdangmaoup.resin.pura</id>
+
+    <depends>com.intellij.modules.java</depends>
+    <depends>com.intellij.modules.ultimate</depends>
+    <depends>com.intellij.javaee</depends>
+    <depends>com.intellij.javaee.app.servers.integration</depends>
+
+    <description>
+        对官方Resin插件适配idea2025.1+版本
+    </description>
+    <vendor>dingdangmaoup</vendor>
+    <category>Deployment</category>
+    <extensions defaultExtensionNs="com.intellij">
+        <configurationType implementation="com.dingdangmaoup.resin.pura.ResinConfigurationType"/>
+        <configurationProducer implementation="com.dingdangmaoup.resin.pura.ResinConfigurationProducer"/>
+        <javaee.app.servers.integration.appServerIntegration implementation="com.dingdangmaoup.resin.pura.ResinManager"/>
+    </extensions>
+</idea-plugin>
