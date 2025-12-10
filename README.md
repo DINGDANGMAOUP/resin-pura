@@ -1,6 +1,8 @@
 # Resin Pura
 
+<!-- Plugin description -->
 An IntelliJ IDEA plugin that provides support for Resin application server integration.
+<!-- Plugin description end -->
 
 ## Features
 
