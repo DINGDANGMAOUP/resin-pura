@@ -52,6 +52,5 @@ The plugin ZIP will be created in `build/distributions/`.
 - IntelliJ IDEA 2024.2+ (Build 242+)
 - Supports IntelliJ IDEA Ultimate Edition
 
-## License
-
-MIT
+## Source
+https://github.com/JetBrains/intellij-obsolete-plugins/tree/master/resin
