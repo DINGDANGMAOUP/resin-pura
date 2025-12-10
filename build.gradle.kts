@@ -36,8 +36,9 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-//        intellijIdeaUltimate("2024.3")
-        local("D:\\app\\JetBrains\\Toolbox\\IntelliJ IDEA Ultimate 3")
+        intellijIdeaUltimate("2025.3")
+//        local("D:\\app\\JetBrains\\Toolbox\\IntelliJ IDEA Ultimate 3")
+//        local("/Users/dingdangmaoup/Applications/IntelliJ IDEA.app")
 //        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
         // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
