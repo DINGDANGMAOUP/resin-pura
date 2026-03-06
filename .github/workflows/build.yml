@@ -51,7 +51,11 @@ jobs:
         id: properties
         shell: bash
         run: |
-          VERSION="$(grep '^pluginVersion\\s*=\\s*' gradle.properties | cut -d '=' -f2 | xargs)"
+          VERSION="$(awk -F '=' '/^pluginVersion[[:space:]]*=/{print $2; exit}' gradle.properties | xargs)"
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read pluginVersion from gradle.properties"
+            exit 1
+          fi
           CHANGELOG="$(./gradlew getChangelog --unreleased --no-header --console=plain -q)"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
