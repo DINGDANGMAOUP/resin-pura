@@ -97,6 +97,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Fetch Sources
+        uses: actions/checkout@v4
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
@@ -110,6 +112,7 @@ jobs:
           ${{ needs.metadata.outputs.changelog }}
           EOF
           gh release create "${{ needs.metadata.outputs.version }}" \
+            -R "${{ github.repository }}" \
             --title "${{ needs.metadata.outputs.version }}" \
             --notes-file release-notes.md \
             ./release-artifacts/*.zip
