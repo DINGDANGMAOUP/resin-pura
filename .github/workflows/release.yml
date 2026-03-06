@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Fetch Sources
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Setup Build Toolchain
         uses: ./.github/actions/setup-gradle-java
       - name: Export Properties
@@ -42,7 +44,28 @@ jobs:
             echo "Tag version ($CHANGELOG_VERSION) does not match pluginVersion ($PLUGIN_VERSION)"
             exit 1
           fi
-          CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --project-version="$CHANGELOG_VERSION")"
+          if CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --project-version="$CHANGELOG_VERSION")"; then
+            echo "Using changelog section for version $CHANGELOG_VERSION"
+          else
+            echo "Version $CHANGELOG_VERSION is missing in CHANGELOG.md, trying Unreleased section"
+            UNRELEASED="$(./gradlew getChangelog --unreleased --no-header --console=plain -q || true)"
+            if [ -n "$(echo "$UNRELEASED" | tr -d '[:space:]')" ]; then
+              CHANGELOG="$UNRELEASED"
+              echo "Using Unreleased changelog section"
+            else
+              echo "Unreleased section is empty, generating changelog from git commits"
+              PREVIOUS_TAG="$(git tag --list 'v*' --sort=-version:refname | grep -vx "$VERSION" | head -n1 || true)"
+              if [ -n "$PREVIOUS_TAG" ]; then
+                COMMITS="$(git log --pretty='- %s' "$PREVIOUS_TAG..$VERSION")"
+              else
+                COMMITS="$(git log --pretty='- %s' -n 30)"
+              fi
+              if [ -z "$(echo "$COMMITS" | tr -d '[:space:]')" ]; then
+                COMMITS="- Release $VERSION"
+              fi
+              CHANGELOG="$(printf '### Changed\n%s\n' "$COMMITS")"
+            fi
+          fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
