@@ -42,7 +42,7 @@ jobs:
             echo "Tag version ($CHANGELOG_VERSION) does not match pluginVersion ($PLUGIN_VERSION)"
             exit 1
           fi
-          CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --version="$CHANGELOG_VERSION")"
+          CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --project-version="$CHANGELOG_VERSION")"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
