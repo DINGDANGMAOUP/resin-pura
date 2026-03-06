@@ -7,58 +7,82 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-
-  # Build and upload the plugin to GitHub releases
-  release:
-    name: Release Plugin
+  metadata:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.properties.outputs.version }}
+      changelog: ${{ steps.properties.outputs.changelog }}
     steps:
-
-      # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v4
-
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 21
-
-      # Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # Make gradlew executable
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # Set environment variables
+      - name: Setup Build Toolchain
+        uses: ./.github/actions/setup-gradle-java
       - name: Export Properties
         id: properties
         shell: bash
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
-          CHANGELOG="$(./gradlew getChangelog --unreleased --no-header --console=plain -q)"
+          CHANGELOG_VERSION="${VERSION#v}"
+          PLUGIN_VERSION="$(grep '^pluginVersion\\s*=\\s*' gradle.properties | cut -d '=' -f2 | xargs)"
+          if [ "$CHANGELOG_VERSION" != "$PLUGIN_VERSION" ]; then
+            echo "Tag version ($CHANGELOG_VERSION) does not match pluginVersion ($PLUGIN_VERSION)"
+            exit 1
+          fi
+          CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --version="$CHANGELOG_VERSION")"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # Build the plugin
+  build:
+    name: Build release artifact
+    needs: [ metadata ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@v4
+      - name: Setup Build Toolchain
+        uses: ./.github/actions/setup-gradle-java
       - name: Build Plugin
         run: ./gradlew buildPlugin
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-plugin-zip
+          path: ./build/distributions/*.zip
+          if-no-files-found: error
 
-      # Create release and upload artifact
+  release:
+    name: Create GitHub release
+    needs: [ metadata, build ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-plugin-zip
+          path: ./release-artifacts
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.properties.outputs.version }}" \
-            --title "${{ steps.properties.outputs.version }}" \
-            --notes "${{ steps.properties.outputs.changelog }}" \
-            ./build/distributions/*.zip
+          cat > release-notes.md << 'EOF'
+          ${{ needs.metadata.outputs.changelog }}
+          EOF
+          gh release create "${{ needs.metadata.outputs.version }}" \
+            --title "${{ needs.metadata.outputs.version }}" \
+            --notes-file release-notes.md \
+            ./release-artifacts/*.zip

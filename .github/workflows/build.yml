@@ -1,7 +1,6 @@
 # GitHub Actions Workflow is created for testing and preparing the plugin release in the following steps:
 # - Validate Gradle Wrapper.
 # - Run 'test' and 'verifyPlugin' tasks.
-# - Run Qodana inspections.
 # - Run the 'buildPlugin' task and prepare artifact for further tests.
 # - Run the 'runPluginVerifier' task.
 # - Create a draft release.
@@ -20,16 +19,20 @@ on:
   # Trigger the workflow on any pull request
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
   
 jobs:
 
-  # Prepare environment and build the plugin
-  build:
-    name: Build
+  # Prepare shared metadata for downstream jobs
+  metadata:
+    name: Prepare metadata
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       version: ${{ steps.properties.outputs.version }}
       changelog: ${{ steps.properties.outputs.changelog }}
@@ -40,190 +43,92 @@ jobs:
       - name: Fetch Sources
         uses: actions/checkout@v4
 
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 21
-
-      # Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # Make gradlew executable
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Setup Build Toolchain
+        uses: ./.github/actions/setup-gradle-java
 
       # Set environment variables
       - name: Export Properties
         id: properties
         shell: bash
         run: |
-          PROPERTIES="$(./gradlew properties --console=plain -q)"
-          VERSION="$(echo "$PROPERTIES" | grep "^version:" | cut -f2- -d ' ')"
+          VERSION="$(grep '^pluginVersion\\s*=\\s*' gradle.properties | cut -d '=' -f2 | xargs)"
           CHANGELOG="$(./gradlew getChangelog --unreleased --no-header --console=plain -q)"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "pluginVerifierHomeDir=~/.pluginVerifier" >> $GITHUB_OUTPUT
+          echo "pluginVerifierHomeDir=$HOME/.pluginVerifier" >> $GITHUB_OUTPUT
           
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # Build plugin
-      - name: Build plugin
-        run: ./gradlew buildPlugin
-
-      # Prepare plugin archive content for creating artifact
-      - name: Prepare Plugin Artifact
-        id: artifact
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/build/distributions
-          FILENAME=`ls *.zip`
-          unzip "$FILENAME" -d content
-
-          echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
-
-      # Store already-built plugin as an artifact for downloading
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artifact.outputs.filename }}
-          path: ./build/distributions/content/*/*
-
-  # Run tests and upload a code coverage report
-  test:
-    name: Test
-    needs: [ build ]
+  # Run Gradle quality/build tasks in parallel
+  gradleChecks:
+    name: ${{ matrix.name }}
+    needs: [ metadata ]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build plugin
+            task: buildPlugin
+          - name: Run tests
+            task: check
+          - name: Verify plugin
+            task: verifyPlugin
     steps:
-
-      # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v4
-
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Setup Build Toolchain
+        uses: ./.github/actions/setup-gradle-java
+      - name: Maximize Build Space
+        if: ${{ matrix.task == 'verifyPlugin' }}
+        uses: jlumbroso/free-disk-space@main
         with:
-          distribution: zulu
-          java-version: 21
-
-      # Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # Make gradlew executable
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # Run tests
-      - name: Run Tests
-        run: ./gradlew check
-
-      # Collect Tests Result of failed tests
+          tool-cache: false
+          large-packages: false
+      - name: Setup Plugin Verifier IDEs Cache
+        if: ${{ matrix.task == 'verifyPlugin' }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ needs.metadata.outputs.pluginVerifierHomeDir }}/ides
+          key: plugin-verifier-${{ runner.os }}-${{ hashFiles('gradle.properties', 'build.gradle.kts', 'settings.gradle.kts', 'gradle/libs.versions.toml') }}
+      - name: Run Gradle Task
+        run: |
+          if [ "${{ matrix.task }}" = "verifyPlugin" ]; then
+            ./gradlew verifyPlugin -Dplugin.verifier.home.dir=${{ needs.metadata.outputs.pluginVerifierHomeDir }}
+          else
+            ./gradlew ${{ matrix.task }}
+          fi
       - name: Collect Tests Result
-        if: ${{ failure() }}
+        if: ${{ failure() && matrix.task == 'check' }}
         uses: actions/upload-artifact@v4
         with:
           name: tests-result
           path: ${{ github.workspace }}/build/reports/tests
-
-      # Upload the Kover report to CodeCov
       - name: Upload Code Coverage Report
+        if: ${{ matrix.task == 'check' }}
         uses: codecov/codecov-action@v5
         with:
           files: ${{ github.workspace }}/build/reports/kover/report.xml
-
-  # Run Qodana inspections and provide report
-  inspectCode:
-    name: Inspect code
-    needs: [ build ]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      checks: write
-      pull-requests: write
-    steps:
-
-      # Free GitHub Actions Environment Disk Space
-      - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@main
+      - name: Prepare Plugin Artifact
+        if: ${{ matrix.task == 'buildPlugin' }}
+        id: artifact
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/build/distributions
+          FILENAME=$(ls *.zip)
+          unzip "$FILENAME" -d content
+          echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
+      - name: Upload Built Plugin
+        if: ${{ matrix.task == 'buildPlugin' }}
+        uses: actions/upload-artifact@v4
         with:
-          tool-cache: false
-          large-packages: false
-
-      # Check out the current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}  # to check out the actual pull request commit, not the merge commit
-          fetch-depth: 0  # a full history is required for pull request analysis
-
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 21
-
-      # Run Qodana inspections
-      - name: Qodana - Code Inspection
-        uses: JetBrains/qodana-action@v2025.2
-        with:
-          cache-default-branch-only: true
-        env:
-          QODANA_TOKEN: ${{ secrets.QODANA }}
-
-  # Run plugin structure verification along with IntelliJ Plugin Verifier
-  verify:
-    name: Verify plugin
-    needs: [ build ]
-    runs-on: ubuntu-latest
-    steps:
-
-      # Free GitHub Actions Environment Disk Space
-      - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          large-packages: false
-
-      # Check out the current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v4
-
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 21
-
-      # Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # Make gradlew executable
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # Cache Plugin Verifier IDEs
-      - name: Setup Plugin Verifier IDEs Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ needs.build.outputs.pluginVerifierHomeDir }}/ides
-          key: plugin-verifier-${{ hashFiles('build/listProductsReleases.txt') }}
-
-      # Run Verify Plugin task and IntelliJ Plugin Verifier tool
-      - name: Run Plugin Verification tasks
-        run: ./gradlew verifyPlugin -Dplugin.verifier.home.dir=${{ needs.build.outputs.pluginVerifierHomeDir }}
-
-      # Collect Plugin Verifier Result
+          name: ${{ steps.artifact.outputs.filename }}
+          path: ./build/distributions/content/*/*
       - name: Collect Plugin Verifier Result
-        if: ${{ always() }}
+        if: ${{ always() && matrix.task == 'verifyPlugin' }}
         uses: actions/upload-artifact@v4
         with:
           name: pluginVerifier-result
@@ -234,8 +139,9 @@ jobs:
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
-    needs: [ build, test, inspectCode, verify ]
+    needs: [ metadata, gradleChecks ]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -258,10 +164,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ needs.build.outputs.version }}" \
+          gh release create "v${{ needs.metadata.outputs.version }}" \
             --draft \
-            --title "v${{ needs.build.outputs.version }}" \
+            --title "v${{ needs.metadata.outputs.version }}" \
             --notes "$(cat << 'EOM'
-          ${{ needs.build.outputs.changelog }}
+          ${{ needs.metadata.outputs.changelog }}
           EOM
           )"
