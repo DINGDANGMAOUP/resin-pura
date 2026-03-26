@@ -1,6 +1,10 @@
 # Resin Pura Changelog
 
 ## [Unreleased]
+### Changed
+- Bump `pluginVersion` to `4.0.5`
+- Update IntelliJ Platform target to `2026.1`
+- Expand compatible build range to `261.*`
 
 ## [3.0.0] - 2025-12-10
 
