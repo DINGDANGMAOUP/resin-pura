@@ -12,29 +12,48 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.DocumentAdapter
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.panel
 import java.io.File
 import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JLabel
-import javax.swing.JPanel
 import javax.swing.event.DocumentEvent
 
 class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPersistentData>() {
-    private val mainPanel = JPanel(GridBagLayout())
     private val resinHomeSelector = TextFieldWithBrowseButton()
     private val resinVersionLabel = JLabel()
-    private val includeAllResinjarsCheckbox = JCheckBox("Include all Resin jars")
+    private val includeAllResinjarsCheckbox = JCheckBox(ResinBundle.message("location.dlg.resin.include.jars"))
     private val defaultResinConf = TextFieldWithBrowseButton()
     private val myErrorLabel = JLabel()
+    private val resinHomeLabel = JLabel(ResinBundle.message("location.dlg.resin.home.text"))
+    private val resinVersionTitleLabel = JLabel(ResinBundle.message("location.dlg.detected.version"))
+    private val defaultResinConfLabel = JLabel(ResinBundle.message("location.dlg.default.resin.conf"))
+    private val mainPanel = panel {
+        row {
+            cell(resinHomeLabel)
+            cell(resinHomeSelector).align(AlignX.FILL)
+        }
+        row {
+            cell(resinVersionTitleLabel)
+            cell(resinVersionLabel).align(AlignX.FILL)
+        }
+        row {
+            cell(includeAllResinjarsCheckbox)
+        }
+        row {
+            cell(defaultResinConfLabel)
+            cell(defaultResinConf).align(AlignX.FILL)
+        }
+        row {
+            cell(myErrorLabel).align(AlignX.FILL)
+        }
+    }
 
     private var suggestConfPath = false
     private var myHasHomeError = false
 
     init {
-        buildUi()
         initChooser(
             resinHomeSelector,
             ResinBundle.message("message.text.locator.resin.home.title"),
@@ -67,44 +86,6 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
         includeAllResinjarsCheckbox.addChangeListener { update() }
         myErrorLabel.icon = AllIcons.General.BalloonError
         update()
-    }
-
-    private fun buildUi() {
-        val c = GridBagConstraints().apply {
-            insets = Insets(4, 6, 4, 6)
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.WEST
-            weightx = 1.0
-            gridx = 0
-            gridy = 0
-        }
-
-        mainPanel.add(JLabel("Resin Home:"), c)
-        c.gridx = 1
-        mainPanel.add(resinHomeSelector, c)
-
-        c.gridx = 0
-        c.gridy = 1
-        mainPanel.add(JLabel("Resin Version:"), c)
-        c.gridx = 1
-        mainPanel.add(resinVersionLabel, c)
-
-        c.gridx = 0
-        c.gridy = 2
-        c.gridwidth = 2
-        mainPanel.add(includeAllResinjarsCheckbox, c)
-
-        c.gridy = 3
-        c.gridwidth = 1
-        c.gridx = 0
-        mainPanel.add(JLabel("Default Resin Conf:"), c)
-        c.gridx = 1
-        mainPanel.add(defaultResinConf, c)
-
-        c.gridx = 0
-        c.gridy = 4
-        c.gridwidth = 2
-        mainPanel.add(myErrorLabel, c)
     }
 
     private fun update() {

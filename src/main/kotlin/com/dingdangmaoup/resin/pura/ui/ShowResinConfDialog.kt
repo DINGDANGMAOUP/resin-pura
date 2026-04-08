@@ -1,37 +1,33 @@
 package com.dingdangmaoup.resin.pura.ui
 
 import com.dingdangmaoup.resin.pura.ResinBundle
-import java.awt.BorderLayout
 import java.awt.Dimension
-import javax.swing.JButton
-import javax.swing.JDialog
-import javax.swing.JPanel
-import javax.swing.JScrollPane
+import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.panel
+import javax.swing.Action
+import javax.swing.JComponent
 import javax.swing.JTextArea
 
-class ShowResinConfDialog(text: String) : JDialog() {
-    private val contentPane = JPanel(BorderLayout(8, 8))
-    private val buttonOK = JButton("OK")
-    private val textArea = JTextArea()
+class ShowResinConfDialog(text: String) : DialogWrapper(true) {
+    private val textArea = JTextArea().apply {
+        this.text = text
+        isEditable = false
+    }
+    private val contentPanel = panel {
+        row {
+            cell(JBScrollPane(textArea)).align(AlignX.FILL)
+        }.resizableRow()
+    }
 
     init {
-        setContentPane(contentPane)
-        isModal = true
-        rootPane.defaultButton = buttonOK
-
-        buttonOK.addActionListener { onOK() }
-
         title = ResinBundle.message("message.text.resin.conf.altered")
-        textArea.text = text
-        textArea.isEditable = false
-        contentPane.add(JScrollPane(textArea), BorderLayout.CENTER)
-        val buttonPanel = JPanel(BorderLayout())
-        buttonPanel.add(buttonOK, BorderLayout.EAST)
-        contentPane.add(buttonPanel, BorderLayout.SOUTH)
-        contentPane.preferredSize = Dimension(640, 480)
+        init()
+        contentPanel.preferredSize = Dimension(640, 480)
     }
 
-    private fun onOK() {
-        dispose()
-    }
+    override fun createCenterPanel(): JComponent = contentPanel
+
+    override fun createActions(): Array<Action> = arrayOf(okAction)
 }
