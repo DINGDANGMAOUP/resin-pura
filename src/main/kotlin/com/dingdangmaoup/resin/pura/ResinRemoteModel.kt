@@ -25,8 +25,19 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     @Throws(RuntimeConfigurationException::class)
     override fun checkConfiguration() {
-        if (!hasJmxStrategy() && getCommonModel().deploymentModels.isNotEmpty()) {
-            throw RuntimeConfigurationError("Remote deployment is not supported for Resin 2.x")
+        val hasDeployments = getCommonModel().deploymentModels.isNotEmpty()
+        if (!hasJmxStrategy() && hasDeployments) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.resin2x.no.deployment"))
+        }
+        if (hasDeployments && getTransportHostId().isNullOrBlank()) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.host.required"))
+        }
+        if (hasDeployments && getHost() == null) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.host.not.found"))
+        }
+        val target = getTransportTargetWebApps()
+        if (hasDeployments && (target == null || target.id == null)) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.target.required"))
         }
         super.checkConfiguration()
     }
