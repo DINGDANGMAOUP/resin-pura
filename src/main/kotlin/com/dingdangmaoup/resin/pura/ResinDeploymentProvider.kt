@@ -18,7 +18,6 @@ import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Ref
 import com.intellij.packaging.artifacts.ArtifactType
-import java.util.Arrays
 
 class ResinDeploymentProvider : DeploymentProviderEx() {
     override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
@@ -38,7 +37,7 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
     }
 
     override fun getSupportedArtifactTypes(): Collection<ArtifactType> {
-        return Arrays.asList(
+        return listOf(
             WebArtifactUtil.getInstance().explodedWarArtifactType,
             WebArtifactUtil.getInstance().warArtifactType,
         )
@@ -55,7 +54,7 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
 
     private fun getDeploymentMethod(deploymentModel: DeploymentModel): ResinDeploymentMethod {
         val method = deploymentModel.deploymentMethod
-        return if (method is ResinDeploymentMethod) method else DEFAULT_DEPLOYMENT_METHOD
+        return method as? ResinDeploymentMethod ?: DEFAULT_DEPLOYMENT_METHOD
     }
 
     private abstract class ResinDeploymentMethod(name: String, local: Boolean, remote: Boolean) :

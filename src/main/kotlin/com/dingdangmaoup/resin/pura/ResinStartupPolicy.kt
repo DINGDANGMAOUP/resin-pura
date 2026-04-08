@@ -27,8 +27,6 @@ import java.io.IOException
 import java.nio.charset.Charset
 import java.text.MessageFormat
 import java.util.ArrayList
-import java.util.Arrays
-import java.util.Collections
 import java.util.Properties
 
 class ResinStartupPolicy : JavaCommandLineStartupPolicy {
@@ -97,7 +95,7 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
             loadResinRunProp(SERVER_ID_VM_PARAMS_PROP, parameters, sid)
         }
         val additionalParameters = resinModel.getAdditionalParameters()
-        if (!additionalParameters.isNullOrEmpty()) {
+        if (additionalParameters.isNotEmpty()) {
             parametersList.addParametersString(additionalParameters)
         }
         loadResinConfProperties(homePath, parameters)
@@ -140,7 +138,7 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     @Throws(ExecutionException::class)
     private fun allowsRunWithWhiteSpace(resinVersion: ResinVersion): Boolean {
         val value = getResinRunProperty(RESIN_VERSIONS_INVALID_PATHS_PROP)
-        val invalids: List<String> = Arrays.asList(*value)
+        val invalids: List<String> = listOf(*value)
         val verNumber = resinVersion.getVersionNumber()
         if (invalids.contains(verNumber)) {
             return false
@@ -180,7 +178,7 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
         resinRunProps = Properties()
         try {
             resinRunProps!!.load(javaClass.getResourceAsStream(RESIN_RUN_PROP_FILE))
-        } catch (e: IOException) {
+        } catch (_: IOException) {
             throw ExecutionException(ResinBundle.message("resin.run.startup.no.prop"))
         }
     }

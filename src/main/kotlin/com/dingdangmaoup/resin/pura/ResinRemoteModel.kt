@@ -62,7 +62,7 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     private fun getTransportHostTarget(): TransportHostTarget? {
         val host = getHost()
-        return if (host == null) null else host.findOrCreateHostTarget(getTransportTargetWebApps())
+        return host?.findOrCreateHostTarget(getTransportTargetWebApps())
     }
 
     override fun transferFile(webAppFile: File): Boolean {
@@ -75,10 +75,8 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     override fun deleteFile(webAppFile: File): Boolean {
         val target = getTransportHostTarget()
-        val vFile: VirtualFile? = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile)
-        if (vFile == null) {
-            return true
-        }
+        val vFile: VirtualFile =
+            LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile) ?: return true
         return target != null && target.delete(project, Collections.singletonList(vFile))
     }
 
