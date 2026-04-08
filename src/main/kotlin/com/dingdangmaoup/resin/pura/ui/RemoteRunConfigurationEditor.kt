@@ -5,60 +5,68 @@ import com.dingdangmaoup.resin.pura.ResinRemoteModel
 import com.dingdangmaoup.resin.pura.resin.jmx.ConnectorPingCommand
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.javaee.transport.TransportManager
+import com.intellij.javaee.transport.TransportManagerConfigurable
+import com.intellij.javaee.transport.TransportManagerConfigurableListener
 import com.intellij.javaee.transport.TransportTarget
+import com.intellij.javaee.transport.TransportTargetConfigurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.panel
+import com.intellij.util.ui.UIUtil
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JLabel
-import javax.swing.JPanel
 import javax.swing.JTextField
 
 class RemoteRunConfigurationEditor(private val myProject: Project) : ResinRunConfigurationEditorBase() {
-    private val myRootPanel = JPanel(GridBagLayout())
     private val myJmxPortField = JTextField(10)
-    private val myPingButton = JButton("Ping")
+    private val myPingButton = JButton(ResinBundle.message("Form.RemoteRunConfigurationEditor.ping"))
     private val myCharsetField = JTextField(16)
-    private val myJmxPortLabel = JLabel("JMX Port:")
+    private val myJmxPortLabel = JLabel(ResinBundle.message("run.config.dlg.jmx.port"))
+    private val myCharsetLabel = JLabel(ResinBundle.message("run.config.dlg.charset"))
+    private val myTransportTargetLabel = JLabel(ResinBundle.message("Form.RemoteRunConfigurationEditor.webapps.target"))
+    private val myTransportHintLabel = JLabel(ResinBundle.message("Form.RemoteRunConfigurationEditor.select.host.hint"))
+    private val myTransportManagerConfigurable = TransportManagerConfigurable()
+    private val myTransportTargetConfigurable = TransportTargetConfigurable()
+    private val myRootPanel = panel {
+        row {
+            cell(myJmxPortLabel)
+            cell(myJmxPortField).align(AlignX.FILL)
+            cell(myPingButton)
+        }
+        row {
+            cell(myCharsetLabel)
+            cell(myCharsetField).align(AlignX.FILL)
+        }
+        group(ResinBundle.message("Form.RemoteRunConfigurationEditor.remote.staging")) {
+            row {
+                cell(myTransportManagerConfigurable.mainPanel).align(AlignX.FILL)
+            }
+            row {
+                cell(myTransportTargetLabel)
+                cell(myTransportTargetConfigurable.mainPanel).align(AlignX.FILL)
+            }
+            row {
+                cell(myTransportHintLabel).align(AlignX.FILL)
+            }
+        }
+    }
 
     private lateinit var myServerModel: ResinRemoteModel
     private var myDeploymentTransportTarget: TransportTarget? = null
 
     init {
-        buildUi()
+        myTransportTargetConfigurable.setParentConfigurable(myTransportManagerConfigurable)
+        myTransportManagerConfigurable.addListener(object : TransportManagerConfigurableListener {
+            override fun hostSelectionChanged() {
+                updateTransportUiState()
+            }
+        })
         myPingButton.addActionListener { onPingButton() }
-    }
-
-    private fun buildUi() {
-        val c = GridBagConstraints().apply {
-            insets = Insets(4, 6, 4, 6)
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.WEST
-            weightx = 1.0
-            gridx = 0
-            gridy = 0
-        }
-
-        myRootPanel.add(myJmxPortLabel, c)
-        c.gridx = 1
-        myRootPanel.add(myJmxPortField, c)
-        c.gridx = 2
-        c.weightx = 0.0
-        myRootPanel.add(myPingButton, c)
-
-        c.gridx = 0
-        c.gridy = 1
-        c.weightx = 0.0
-        myRootPanel.add(JLabel("Charset:"), c)
-        c.gridx = 1
-        c.gridwidth = 2
-        c.weightx = 1.0
-        myRootPanel.add(myCharsetField, c)
+        updateTransportUiState()
     }
 
     private fun getProject(): Project = myProject
@@ -101,7 +109,10 @@ class RemoteRunConfigurationEditor(private val myProject: Project) : ResinRunCon
         myServerModel = s.serverModel as ResinRemoteModel
         myCharsetField.text = myServerModel.charset
         myJmxPortField.text = myServerModel.jmxPort.toString()
+        myTransportManagerConfigurable.setHostId(myServerModel.getTransportHostId(), getProject())
         myDeploymentTransportTarget = getOrCreateTransportTarget(myServerModel.getTransportTargetWebApps())
+        myTransportTargetConfigurable.setTarget(myDeploymentTransportTarget)
+        updateTransportUiState()
         updateJmxPortVisible(myServerModel)
     }
 
@@ -110,7 +121,9 @@ class RemoteRunConfigurationEditor(private val myProject: Project) : ResinRunCon
         val serverModel = s.serverModel as ResinRemoteModel
         serverModel.jmxPort = parseJmxPort()
         serverModel.charset = myCharsetField.text
+        serverModel.setTransportHostId(myTransportManagerConfigurable.hostId)
         serverModel.setTransportTargetWebApps(myDeploymentTransportTarget)
+        myTransportTargetConfigurable.saveState()
     }
 
     override fun createEditor(): JComponent = myRootPanel
@@ -119,6 +132,13 @@ class RemoteRunConfigurationEditor(private val myProject: Project) : ResinRunCon
         myJmxPortLabel.isVisible = visible
         myJmxPortField.isVisible = visible
         myPingButton.isVisible = visible
+    }
+
+    private fun updateTransportUiState() {
+        val hasHost = myTransportManagerConfigurable.host != null
+        myTransportTargetLabel.isEnabled = hasHost
+        UIUtil.setEnabled(myTransportTargetConfigurable.mainPanel, hasHost, true)
+        myTransportHintLabel.isVisible = !hasHost
     }
 
     companion object {

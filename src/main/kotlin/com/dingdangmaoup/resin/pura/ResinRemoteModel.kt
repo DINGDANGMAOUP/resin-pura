@@ -25,8 +25,19 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     @Throws(RuntimeConfigurationException::class)
     override fun checkConfiguration() {
-        if (!hasJmxStrategy() && getCommonModel().deploymentModels.isNotEmpty()) {
-            throw RuntimeConfigurationError("Remote deployment is not supported for Resin 2.x")
+        val hasDeployments = getCommonModel().deploymentModels.isNotEmpty()
+        if (!hasJmxStrategy() && hasDeployments) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.resin2x.no.deployment"))
+        }
+        if (hasDeployments && getTransportHostId().isNullOrBlank()) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.host.required"))
+        }
+        if (hasDeployments && getHost() == null) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.host.not.found"))
+        }
+        val target = getTransportTargetWebApps()
+        if (hasDeployments && (target == null || target.id == null)) {
+            throw RuntimeConfigurationError(ResinBundle.message("remote.config.error.transport.target.required"))
         }
         super.checkConfiguration()
     }
@@ -51,7 +62,7 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     private fun getTransportHostTarget(): TransportHostTarget? {
         val host = getHost()
-        return if (host == null) null else host.findOrCreateHostTarget(getTransportTargetWebApps())
+        return host?.findOrCreateHostTarget(getTransportTargetWebApps())
     }
 
     override fun transferFile(webAppFile: File): Boolean {
@@ -64,10 +75,8 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     override fun deleteFile(webAppFile: File): Boolean {
         val target = getTransportHostTarget()
-        val vFile: VirtualFile? = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile)
-        if (vFile == null) {
-            return true
-        }
+        val vFile: VirtualFile =
+            LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile) ?: return true
         return target != null && target.delete(project, Collections.singletonList(vFile))
     }
 

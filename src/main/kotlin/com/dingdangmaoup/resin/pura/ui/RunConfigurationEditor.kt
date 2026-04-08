@@ -11,31 +11,67 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.PanelWithAnchor
 import com.intellij.ui.RawCommandLineEditor
 import com.intellij.ui.components.JBLabel
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.panel
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JLabel
-import javax.swing.JPanel
 import javax.swing.JTextField
 import org.jetbrains.annotations.PropertyKey
 
 class RunConfigurationEditor : ResinRunConfigurationEditorBase(), PanelWithAnchor {
-    private val mainPanel = JPanel(GridBagLayout())
     private val myHttpPortTextField = JTextField(10)
-    private val debugConfiguration = JCheckBox("Debug Configuration")
+    private val debugConfiguration = JCheckBox(ResinBundle.message("run.config.dlg.debug.configuration"))
     private val resinConfSelector = TextFieldWithBrowseButton()
     private val charset = JTextField(16)
-    private val readOnlyConfiguration = JCheckBox("Read-only Configuration")
+    private val readOnlyConfiguration = JCheckBox(ResinBundle.message("run.config.dlg.read.only.configuration"))
     private val additionalParameters = RawCommandLineEditor()
-    private val autoBuildClasspath = JCheckBox("Auto Build Classpath")
+    private val autoBuildClasspath = JCheckBox(ResinBundle.message("run.config.dlg.auto.build.classpath"))
     private val myDeployModeComboBox = JComboBox<String>()
     private val myJmxPortTextField = JTextField(10)
-    private val myAdditionalResinCommandLineLabel = JBLabel("Additional Resin Command Line:")
-    private val myJmxPortLabel = JLabel("JMX Port:")
+    private val httpPortLabel = JLabel(ResinBundle.message("run.config.dlg.http.port"))
+    private val resinConfLabel = JLabel(ResinBundle.message("run.config.dlg.resin.conf"))
+    private val deployModeLabel = JLabel(ResinBundle.message("run.config.dlg.deploy.mode"))
+    private val charsetLabel = JLabel(ResinBundle.message("run.config.dlg.charset"))
+    private val myAdditionalResinCommandLineLabel = JBLabel(ResinBundle.message("run.config.dlg.additional.params"))
+    private val myJmxPortLabel = JLabel(ResinBundle.message("run.config.dlg.jmx.port"))
     private var anchor: JComponent? = null
+    private val mainPanel = panel {
+        row {
+            cell(readOnlyConfiguration)
+        }
+        row {
+            cell(autoBuildClasspath)
+        }
+        row {
+            cell(debugConfiguration)
+        }
+        row {
+            cell(httpPortLabel)
+            cell(myHttpPortTextField).align(AlignX.FILL)
+        }
+        row {
+            cell(resinConfLabel)
+            cell(resinConfSelector).align(AlignX.FILL)
+        }
+        row {
+            cell(deployModeLabel)
+            cell(myDeployModeComboBox).align(AlignX.FILL)
+        }
+        row {
+            cell(myJmxPortLabel)
+            cell(myJmxPortTextField).align(AlignX.FILL)
+        }
+        row {
+            cell(charsetLabel)
+            cell(charset).align(AlignX.FILL)
+        }
+        row {
+            cell(myAdditionalResinCommandLineLabel)
+            cell(additionalParameters).align(AlignX.FILL)
+        }
+    }
 
     init {
         initChooser(
@@ -46,74 +82,7 @@ class RunConfigurationEditor : ResinRunConfigurationEditorBase(), PanelWithAncho
         myDeployModeComboBox.addItem(ResinModel.DEPLOY_MODE_AUTO)
         myDeployModeComboBox.addItem(ResinModel.DEPLOY_MODE_LAZY)
         myDeployModeComboBox.addItem(ResinModel.DEPLOY_MODE_MANUAL)
-        buildUi()
         setAnchor(myAdditionalResinCommandLineLabel)
-    }
-
-    private fun buildUi() {
-        val c = GridBagConstraints().apply {
-            insets = Insets(4, 6, 4, 6)
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.WEST
-            weightx = 1.0
-            gridx = 0
-            gridy = 0
-            gridwidth = 2
-        }
-
-        mainPanel.add(readOnlyConfiguration, c)
-        c.gridy++
-        mainPanel.add(autoBuildClasspath, c)
-        c.gridy++
-        mainPanel.add(debugConfiguration, c)
-
-        c.gridy++
-        c.gridwidth = 1
-        c.weightx = 0.0
-        mainPanel.add(JLabel("HTTP Port:"), c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(myHttpPortTextField, c)
-
-        c.gridx = 0
-        c.gridy++
-        c.weightx = 0.0
-        mainPanel.add(JLabel("Resin Conf:"), c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(resinConfSelector, c)
-
-        c.gridx = 0
-        c.gridy++
-        c.weightx = 0.0
-        mainPanel.add(JLabel("Deploy Mode:"), c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(myDeployModeComboBox, c)
-
-        c.gridx = 0
-        c.gridy++
-        c.weightx = 0.0
-        mainPanel.add(myJmxPortLabel, c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(myJmxPortTextField, c)
-
-        c.gridx = 0
-        c.gridy++
-        c.weightx = 0.0
-        mainPanel.add(JLabel("Charset:"), c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(charset, c)
-
-        c.gridx = 0
-        c.gridy++
-        c.weightx = 0.0
-        mainPanel.add(myAdditionalResinCommandLineLabel, c)
-        c.gridx = 1
-        c.weightx = 1.0
-        mainPanel.add(additionalParameters, c)
     }
 
     override fun resetEditorFrom(commonModel: CommonModel) {
