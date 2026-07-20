@@ -57,8 +57,8 @@ The plugin ZIP will be created in `build/distributions/`.
 
 ## Compatibility
 
-- IntelliJ IDEA 2024.2+ (Build 242+)
-- Supports IntelliJ IDEA Ultimate Edition
+- IntelliJ IDEA 2024.2–2026.2 (Build 242–262.*)
+- IntelliJ IDEA Ultimate Edition
 
 ## Upstream Source
 JetBrains obsolete plugin repository (original Resin plugin):

@@ -9,7 +9,7 @@
 
     <description>
         基于 JetBrains 已停止维护的 Resin 开源插件（intellij-obsolete-plugins/resin）进行升级迁移，
-        持续适配新版 IntelliJ IDEA（2025.3+）。
+        持续适配 IntelliJ IDEA 2024.2–2026.2（Build 242–262.*）。
     </description>
     <vendor>dingdangmaoup</vendor>
     <category>Deployment</category>
