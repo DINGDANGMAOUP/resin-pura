@@ -128,6 +128,12 @@ tasks {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
 
+    // IntelliJ's production and test instrumenters share mutable state and can
+    // fail nondeterministically when a clean build runs both tasks in parallel.
+    named("instrumentTestCode") {
+        mustRunAfter("instrumentCode")
+    }
+
     publishPlugin {
         dependsOn(patchChangelog)
     }
