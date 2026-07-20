@@ -11,6 +11,7 @@
 
 ### Fixed
 - Restore builds against IntelliJ IDEA 2026.2 by upgrading the IntelliJ Platform Gradle Plugin from `2.11.0` to `2.18.1`
+- Serialize production and test bytecode instrumentation to prevent clean parallel CI builds from racing
 
 ## [4.1.0] - 2026-04-08
 
