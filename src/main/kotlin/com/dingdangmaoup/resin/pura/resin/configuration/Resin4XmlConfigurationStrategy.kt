@@ -8,7 +8,6 @@ import org.jdom.Namespace
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.util.ArrayList
 import java.util.HashMap
 
 class Resin4XmlConfigurationStrategy(resinInstallation: ResinInstallation) : ResinXmlConfigurationStrategy(resinInstallation) {
@@ -45,39 +44,30 @@ class Resin4XmlConfigurationStrategy(resinInstallation: ResinInstallation) : Res
             }
         }
 
-        val jvmArgName2Element = HashMap<String, Element>()
-        val jvmArgElements = elementsProvider.getParamParentElement().getChildren(JVM_ARG, ns)
-        for (jvmArg in jvmArgElements) {
-            if (jvmArg !is Element) continue
-            val jvmArgText = jvmArg.text
-            val jvmArgNameValue = jvmArgText.split(JVM_ARG_SEPARATOR, limit = 2)
-            jvmArgName2Element[jvmArgNameValue[0]] = jvmArg
-        }
-
-        val jmxJvmArgs = ArrayList<ArgNameValue>()
-        jmxJvmArgs.add(ArgNameValue("-Dcom.sun.management.jmxremote.port", serverModel.jmxPort.toString()))
-        jmxJvmArgs.add(ArgNameValue("-Dcom.sun.management.jmxremote.ssl", "false"))
-
-        val accessFile: File? = serverModel.getAccessFile()
-        val passwordFile: File? = serverModel.getPasswordFile()
-        if (accessFile == null || passwordFile == null) {
-            jmxJvmArgs.add(ArgNameValue("-Dcom.sun.management.jmxremote.authenticate", "false"))
-        } else {
-            try {
-                jmxJvmArgs.add(ArgNameValue("-Dcom.sun.management.jmxremote.password.file", passwordFile.canonicalPath))
-                jmxJvmArgs.add(ArgNameValue("-Dcom.sun.management.jmxremote.access.file", accessFile.canonicalPath))
-            } catch (e: IOException) {
-                throw ExecutionException(e)
+        if (serverModel.hasJmxStrategy()) {
+            val jvmArgName2Element = HashMap<String, Element>()
+            val jvmArgElements = elementsProvider.getParamParentElement().getChildren(JVM_ARG, ns)
+            for (jvmArg in jvmArgElements) {
+                if (jvmArg !is Element) continue
+                val jvmArgText = jvmArg.text
+                val jvmArgNameValue = jvmArgText.split(JVM_ARG_SEPARATOR, limit = 2)
+                jvmArgName2Element[jvmArgNameValue[0]] = jvmArg
             }
-        }
 
-        for (jmxJvmArg in jmxJvmArgs) {
-            var jvmArgElement = jvmArgName2Element[jmxJvmArg.first]
-            if (jvmArgElement == null) {
-                jvmArgElement = Element(JVM_ARG, ns)
-                elementsProvider.getParamParentElement().addContent(jvmArgElement)
+            val jmxJvmArgs = buildJmxJvmArgs(
+                serverModel.jmxPort,
+                serverModel.getAccessFile(),
+                serverModel.getPasswordFile(),
+            )
+
+            for ((name, value) in jmxJvmArgs) {
+                var jvmArgElement = jvmArgName2Element[name]
+                if (jvmArgElement == null) {
+                    jvmArgElement = Element(JVM_ARG, ns)
+                    elementsProvider.getParamParentElement().addContent(jvmArgElement)
+                }
+                jvmArgElement.text = name + JVM_ARG_SEPARATOR + value
             }
-            jvmArgElement.text = jmxJvmArg.first + JVM_ARG_SEPARATOR + jmxJvmArg.second
         }
     }
 
@@ -104,7 +94,7 @@ class Resin4XmlConfigurationStrategy(resinInstallation: ResinInstallation) : Res
                     result = importElementsProvider.getDirectClusterDefaultElement()
                     if (result != null) {
                         if (getInstallation().getVersion().getParsed().compare(4, 0, 41) >= 0) {
-                            resolveImports(element, null)
+                            resolveImports(element, null, configImport.getSourceDirectory())
                         }
                         configImport.copy()
                         return result
@@ -114,8 +104,6 @@ class Resin4XmlConfigurationStrategy(resinInstallation: ResinInstallation) : Res
             return super.doGetClusterDefaultElement()
         }
     }
-
-    private data class ArgNameValue(val first: String, val second: String)
 
     companion object {
         protected const val RESIN_CONF = "resin4.xml"
@@ -129,5 +117,42 @@ class Resin4XmlConfigurationStrategy(resinInstallation: ResinInstallation) : Res
         private const val FIRST_SERVER_ID_SUFFIX = "0"
         private const val JVM_ARG = "jvm-arg"
         private const val JVM_ARG_SEPARATOR = "="
+        private const val LOOPBACK_ADDRESS = "127.0.0.1"
+
+        @Throws(ExecutionException::class)
+        internal fun buildJmxJvmArgs(
+            jmxPort: Int,
+            accessFile: File?,
+            passwordFile: File?,
+        ): List<Pair<String, String>> {
+            if (jmxPort !in 1..65535) {
+                throw ExecutionException("JMX port must be between 1 and 65535")
+            }
+            val canonicalAccessFile = requireCredentialFile("access", accessFile)
+            val canonicalPasswordFile = requireCredentialFile("password", passwordFile)
+
+            return listOf(
+                "-Dcom.sun.management.jmxremote.port" to jmxPort.toString(),
+                "-Dcom.sun.management.jmxremote.ssl" to "false",
+                "-Dcom.sun.management.jmxremote.authenticate" to "true",
+                "-Dcom.sun.management.jmxremote.password.file" to canonicalPasswordFile.path,
+                "-Dcom.sun.management.jmxremote.access.file" to canonicalAccessFile.path,
+                "-Dcom.sun.management.jmxremote.host" to LOOPBACK_ADDRESS,
+                "-Djava.rmi.server.hostname" to LOOPBACK_ADDRESS,
+            )
+        }
+
+        @Throws(ExecutionException::class)
+        private fun requireCredentialFile(kind: String, file: File?): File {
+            val canonicalFile = try {
+                file?.canonicalFile
+            } catch (e: IOException) {
+                throw ExecutionException("Can't resolve the JMX $kind file", e)
+            }
+            if (canonicalFile == null || !canonicalFile.isFile || !canonicalFile.canRead()) {
+                throw ExecutionException("Authenticated JMX requires a readable $kind file")
+            }
+            return canonicalFile
+        }
     }
 }

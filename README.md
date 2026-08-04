@@ -17,7 +17,11 @@ Because the original plugin is no longer maintained and became incompatible with
 - Resin server configuration and management
 - Deployment support for web applications
 - JMX-based monitoring and control
+- Optional remote JMX credentials stored per endpoint in IntelliJ Password Safe
+- Loopback-only authenticated JMX defaults for local Resin processes
 - Support for multiple Resin versions (2.x, 3.x, 4.x)
+
+Remote credentials are protected at rest by IntelliJ Password Safe. JMX/RMI transport encryption remains server-controlled, so use TLS or a trusted tunnel across untrusted networks.
 
 ## Installation
 
@@ -53,6 +57,8 @@ The plugin ZIP will be created in `build/distributions/`.
 
 ```bash
 ./gradlew check
+./gradlew test -PplatformVersion=2024.2
+./gradlew verifyPlugin
 ```
 
 ## Compatibility

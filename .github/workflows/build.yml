@@ -77,10 +77,16 @@ jobs:
         include:
           - name: Build plugin
             task: buildPlugin
+            arguments: ""
           - name: Run tests
             task: check
+            arguments: ""
+          - name: Run tests on compatibility floor
+            task: test
+            arguments: "-PplatformVersion=2024.2"
           - name: Verify plugin
             task: verifyPlugin
+            arguments: ""
     steps:
       - name: Fetch Sources
         uses: actions/checkout@v4
@@ -101,15 +107,15 @@ jobs:
       - name: Run Gradle Task
         run: |
           if [ "${{ matrix.task }}" = "verifyPlugin" ]; then
-            ./gradlew verifyPlugin -Dplugin.verifier.home.dir=${{ needs.metadata.outputs.pluginVerifierHomeDir }}
+            ./gradlew verifyPlugin -Dplugin.verifier.home.dir=${{ needs.metadata.outputs.pluginVerifierHomeDir }} ${{ matrix.arguments }}
           else
-            ./gradlew ${{ matrix.task }}
+            ./gradlew ${{ matrix.task }} ${{ matrix.arguments }}
           fi
       - name: Collect Tests Result
-        if: ${{ failure() && matrix.task == 'check' }}
+        if: ${{ failure() && (matrix.task == 'check' || matrix.task == 'test') }}
         uses: actions/upload-artifact@v4
         with:
-          name: tests-result
+          name: tests-result-${{ matrix.name }}
           path: ${{ github.workspace }}/build/reports/tests
       - name: Upload Code Coverage Report
         if: ${{ matrix.task == 'check' }}
@@ -122,9 +128,15 @@ jobs:
         shell: bash
         run: |
           cd ${{ github.workspace }}/build/distributions
-          FILENAME=$(ls *.zip)
+          shopt -s nullglob
+          artifacts=(*.zip)
+          if [ "${#artifacts[@]}" -ne 1 ]; then
+            echo "Expected exactly one plugin ZIP, found ${#artifacts[@]}"
+            exit 1
+          fi
+          FILENAME="${artifacts[0]}"
           unzip "$FILENAME" -d content
-          echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
+          echo "filename=${FILENAME%.zip}" >> "$GITHUB_OUTPUT"
       - name: Upload Built Plugin
         if: ${{ matrix.task == 'buildPlugin' }}
         uses: actions/upload-artifact@v4
@@ -167,11 +179,10 @@ jobs:
       - name: Create Release Draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ needs.metadata.outputs.changelog }}
         run: |
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
           gh release create "v${{ needs.metadata.outputs.version }}" \
             --draft \
             --title "v${{ needs.metadata.outputs.version }}" \
-            --notes "$(cat << 'EOM'
-          ${{ needs.metadata.outputs.changelog }}
-          EOM
-          )"
+            --notes-file release-notes.md

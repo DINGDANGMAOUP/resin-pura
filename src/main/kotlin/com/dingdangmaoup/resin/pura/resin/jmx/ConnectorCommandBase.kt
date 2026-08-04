@@ -6,8 +6,12 @@ import com.intellij.openapi.diagnostic.Logger
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeoutException
 
-abstract class ConnectorCommandBase<T>(private val myResinModel: ResinModelBase<*>) : AbstractConnectorCommand<T>() {
+internal abstract class ConnectorCommandBase<T : Any>(
+    private val myResinModel: ResinModelBase<*>,
+    credentialProvider: () -> JmxCredentials? = myResinModel::getJmxCredentials,
+) : AbstractConnectorCommand<T>() {
     private var myResult: T? = null
+    private val myCredentials: JmxCredentials? by lazy(credentialProvider)
 
     override fun getHost(): String = myResinModel.getCommonModel().host
 
@@ -16,7 +20,7 @@ abstract class ConnectorCommandBase<T>(private val myResinModel: ResinModelBase<
     fun safeExecute(): Boolean {
         return try {
             myResult = execute()
-            true
+            myResult != null
         } catch (e: TimeoutException) {
             LOG.debug(e)
             false
@@ -28,9 +32,9 @@ abstract class ConnectorCommandBase<T>(private val myResinModel: ResinModelBase<
 
     fun getResult(): T? = myResult
 
-    override fun getJmxUsername(): String? = myResinModel.getJmxUsername()
+    open override fun getJmxUsername(): String? = myCredentials?.username
 
-    override fun getJmxPassword(): String? = myResinModel.getJmxPassword()
+    open override fun getJmxPassword(): String? = myCredentials?.password
 
     companion object {
         private val LOG = Logger.getInstance(ConnectorCommandBase::class.java)

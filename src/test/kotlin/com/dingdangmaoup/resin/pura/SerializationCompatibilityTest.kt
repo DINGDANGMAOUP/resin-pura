@@ -9,7 +9,7 @@ import org.junit.Test
 
 class SerializationCompatibilityTest {
     @Test
-    fun `server model serialization omits defaults and round-trips state`() {
+    fun `server model serialization omits legacy defaults and round-trips state`() {
         val defaultState = Element("state")
         ResinModel().writeExternal(defaultState)
         assertTrue(defaultState.attributes.isEmpty())
@@ -34,6 +34,57 @@ class SerializationCompatibilityTest {
         assertEquals(source.getResinConf(), restored.getResinConf())
         assertEquals(source.isDebugConfiguration(), restored.isDebugConfiguration())
         assertEquals(source.getDeployMode(), restored.getDeployMode())
+    }
+
+    @Test
+    fun `legacy state without a port retains the historical port 80`() {
+        val restored = ResinModel()
+
+        restored.readExternal(Element("state"))
+
+        assertEquals(80, restored.port)
+    }
+
+    @Test
+    fun `new local template persists port 8080 and round-trips it`() {
+        val source = ResinConfigurationType.createServerModel(true) as ResinModel
+        val serialized = Element("state")
+
+        source.writeExternal(serialized)
+        val restored = ResinModel()
+        restored.readExternal(serialized)
+
+        assertEquals("8080", serialized.getChildText("port"))
+        assertEquals(8080, restored.port)
+    }
+
+    @Test
+    fun `server model clone owns an independent persisted data snapshot`() {
+        val original = ResinModel().apply {
+            port = 8080
+            jmxPort = 9999
+            charset = "UTF-8"
+            setResinConf("conf/original.xml")
+            setDebugConfiguration(true)
+        }
+
+        val snapshot = original.clone() as ResinModel
+        snapshot.port = 9090
+        snapshot.jmxPort = 1099
+        snapshot.charset = "ISO-8859-1"
+        snapshot.setResinConf("conf/snapshot.xml")
+        snapshot.setDebugConfiguration(false)
+
+        assertEquals(8080, original.port)
+        assertEquals(9999, original.jmxPort)
+        assertEquals("UTF-8", original.charset)
+        assertEquals("conf/original.xml", original.getResinConf())
+        assertTrue(original.isDebugConfiguration())
+        assertEquals(9090, snapshot.port)
+        assertEquals(1099, snapshot.jmxPort)
+        assertEquals("ISO-8859-1", snapshot.charset)
+        assertEquals("conf/snapshot.xml", snapshot.getResinConf())
+        assertTrue(!snapshot.isDebugConfiguration())
     }
 
     @Test

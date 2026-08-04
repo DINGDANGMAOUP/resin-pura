@@ -13,7 +13,7 @@ class DeploymentProviderCompatibilityTest {
     }
 
     @Test
-    fun `legacy server model provider remains a nullable compatibility bridge`() {
+    fun `server model keeps the required nullable ABI bridge`() {
         assertNull(ResinModel().getDeploymentProvider())
     }
 }

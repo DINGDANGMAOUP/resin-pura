@@ -32,24 +32,29 @@ class ResinConfiguration(serverModel: ResinModel) {
             throw ExecutionException(e.localizedMessage ?: "")
         }
 
-        myStrategy = helper.getStrategy()
-            ?: throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"))
+        myStrategy = ResinConfigurationStrategy.getForInstallation(myInstallation)
 
         if (serverModel.isReadOnlyConfiguration()) {
             myGeneratedConfig = null
         } else {
             try {
-                val document: Element = if (mySourceConfig.length() == 0L) {
+                val usesBundledTemplate = mySourceConfig.length() == 0L
+                val document: Element = if (usesBundledTemplate) {
                     val stream = myStrategy.getDefaultResinConfContent()
                         ?: throw ExecutionException(ResinBundle.message("run.resin.conf.doesnt.exist"))
-                    JDOMUtil.load(stream)
+                    stream.use(JDOMUtil::load)
                 } else {
                     JDOMUtil.load(mySourceConfig)
                 }
 
                 myGeneratedConfig = ResinGeneratedConfig(document, "resin")
                 patchConfigToMakeDebuggerWork(document)
-                myStrategy.init(serverModel, document)
+                val configOrigin = if (usesBundledTemplate) {
+                    File(File(myInstallation.getResinHome(), "conf"), mySourceConfig.name)
+                } else {
+                    mySourceConfig
+                }
+                myStrategy.init(serverModel, document, configOrigin)
                 myStrategy.setPort(serverModel.port)
             } catch (e: JDOMException) {
                 throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"), e)
@@ -61,7 +66,7 @@ class ResinConfiguration(serverModel: ResinModel) {
                 if (model.deploymentMethod == ResinDeploymentProvider.CONF_DEPLOYMENT_METHOD) {
                     val webApp = ResinDeploymentProvider.getWebApp(model)
                     if (webApp != null) {
-                        deploy(webApp)
+                        myStrategy.deploy(webApp)
                     }
                 }
             }
@@ -104,10 +109,11 @@ class ResinConfiguration(serverModel: ResinModel) {
         private const val COMPILER_ATTRIBUTE = "compiler"
         private const val COMPILER_ATTRIBUTE_VALUE = "internal"
         private const val ARGS_ATTRIBUTE_VALUE = "-source 1.5"
-        private const val ARGS_ATTRIBUTE_VALUE_PREFIX = "-g"
+        private const val DEBUG_OPTION = "-g"
+        private val DEBUG_OPTION_PATTERN = Regex("""(?<!\S)-g(?::[^\s]+)?(?=\s|$)""")
 
         @JvmStatic
-        private fun patchConfigToMakeDebuggerWork(element: Element) {
+        internal fun patchConfigToMakeDebuggerWork(element: Element) {
             var javac = element.getChild(JAVAC_ELEMENT, element.namespace)
             if (javac == null) {
                 javac = Element(JAVAC_ELEMENT, element.namespace)
@@ -116,8 +122,16 @@ class ResinConfiguration(serverModel: ResinModel) {
                 element.addContent(javac)
             }
             val args: Attribute = javac.getAttribute(ARGS_ATTRIBUTE)
-            if (!args.value.contains(ARGS_ATTRIBUTE_VALUE_PREFIX)) {
-                args.value = "$ARGS_ATTRIBUTE_VALUE_PREFIX ${args.value}"
+                ?: javac.setAttribute(ARGS_ATTRIBUTE, ARGS_ATTRIBUTE_VALUE).getAttribute(ARGS_ATTRIBUTE)
+            val debugOptions = DEBUG_OPTION_PATTERN.findAll(args.value).toList()
+            args.value = when {
+                debugOptions.isEmpty() -> args.value.trim().let { remaining ->
+                    if (remaining.isEmpty()) DEBUG_OPTION else "$DEBUG_OPTION $remaining"
+                }
+                debugOptions.size == 1 && debugOptions.single().value == DEBUG_OPTION -> args.value
+                else -> DEBUG_OPTION_PATTERN.replace(args.value, "").trim().let { remaining ->
+                    if (remaining.isEmpty()) DEBUG_OPTION else "$DEBUG_OPTION $remaining"
+                }
             }
         }
     }

@@ -2,6 +2,7 @@ package com.dingdangmaoup.resin.pura.ui
 
 import com.dingdangmaoup.resin.pura.ResinBundle
 import com.dingdangmaoup.resin.pura.ResinModel
+import com.dingdangmaoup.resin.pura.ResinUtil
 import com.dingdangmaoup.resin.pura.resin.common.ParseUtil
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -102,14 +103,18 @@ class RunConfigurationEditor : ResinRunConfigurationEditorBase(), PanelWithAncho
     @Throws(ConfigurationException::class)
     override fun applyEditorTo(commonModel: CommonModel) {
         val resinModel = commonModel.serverModel as ResinModel
-        resinModel.port = parseInt(myHttpPortTextField, "run.config.dlg.http.port.error")
+        val targetPort = parseInt(myHttpPortTextField, "run.config.dlg.http.port.error")
+        val targetJmxPort = parseInt(myJmxPortTextField, "run.config.dlg.jmx.port.error")
+        val targetCharset = parseCharset(charset.text)
+
+        resinModel.port = targetPort
         resinModel.setResinConf(resinConfSelector.text)
         resinModel.setDebugConfiguration(debugConfiguration.isSelected)
         resinModel.setReadOnlyConfiguration(readOnlyConfiguration.isSelected)
         resinModel.setAutoBuildClassPath(autoBuildClasspath.isSelected)
-        resinModel.charset = charset.text
+        resinModel.charset = targetCharset
         resinModel.setAdditionalParameters(additionalParameters.text)
-        resinModel.jmxPort = parseInt(myJmxPortTextField, "run.config.dlg.jmx.port.error")
+        resinModel.jmxPort = targetJmxPort
         resinModel.setDeployMode(myDeployModeComboBox.selectedItem as String?)
     }
 
@@ -143,11 +148,25 @@ class RunConfigurationEditor : ResinRunConfigurationEditorBase(), PanelWithAncho
             text: JTextField,
             @PropertyKey(resourceBundle = ResinBundle.BUNDLE) errorKey: String,
         ): Int {
-            return object : ParseUtil() {
+            val value = object : ParseUtil() {
                 override fun getErrorMessage(unparsableValue: String): String {
                     return ResinBundle.message(errorKey, unparsableValue)
                 }
             }.parseInt(text)
+            if (!ResinUtil.isValidPort(value)) {
+                throw ConfigurationException(ResinBundle.message(errorKey, text.text))
+            }
+            return value
+        }
+
+        @JvmStatic
+        @Throws(ConfigurationException::class)
+        internal fun parseCharset(value: String): String {
+            val normalized = value.trim()
+            if (!ResinUtil.isValidCharset(normalized)) {
+                throw ConfigurationException(ResinBundle.message("run.config.dlg.charset.error", value))
+            }
+            return normalized
         }
     }
 }

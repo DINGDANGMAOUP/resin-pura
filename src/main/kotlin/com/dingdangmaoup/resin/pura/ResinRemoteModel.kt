@@ -1,6 +1,12 @@
 package com.dingdangmaoup.resin.pura
 
 import com.dingdangmaoup.resin.pura.ui.RemoteRunConfigurationEditor
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxCredentialStore
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxCredentialEdit
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxCredentials
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxEndpoint
+import com.dingdangmaoup.resin.pura.resin.jmx.PasswordSafeJmxCredentialStore
+import com.dingdangmaoup.resin.pura.resin.jmx.applyCredentialEdit
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.configurations.RuntimeConfigurationException
 import com.intellij.javaee.appServers.deployment.DeploymentModel
@@ -18,7 +24,13 @@ import com.intellij.util.xmlb.annotations.Tag
 import java.io.File
 import java.util.Collections
 
-class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>() {
+class ResinRemoteModel() : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>() {
+    private var myJmxCredentialStore: JmxCredentialStore? = null
+
+    internal constructor(jmxCredentialStore: JmxCredentialStore) : this() {
+        myJmxCredentialStore = jmxCredentialStore
+    }
+
     override fun getEditor(): SettingsEditor<CommonModel> = RemoteRunConfigurationEditor(project)
 
     override fun getAddressesToCheck(): List<Pair<String, Int>> = Collections.emptyList()
@@ -56,6 +68,23 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
 
     override fun createResinModelData(): ResinRemoteModelData = ResinRemoteModelData()
 
+    override fun getJmxCredentials(): JmxCredentials? =
+        loadJmxCredentials(JmxEndpoint.of(getCommonModel().host, jmxPort))
+
+    internal fun loadJmxCredentials(endpoint: JmxEndpoint): JmxCredentials? = getJmxCredentialStore().load(endpoint)
+
+    internal fun applyJmxCredentialEdit(
+        originalEndpoint: JmxEndpoint,
+        targetEndpoint: JmxEndpoint,
+        edit: JmxCredentialEdit,
+    ) = applyCredentialEdit(getJmxCredentialStore(), originalEndpoint, targetEndpoint, edit)
+
+    private fun getJmxCredentialStore(): JmxCredentialStore {
+        val existing = myJmxCredentialStore
+        if (existing != null) return existing
+        return PasswordSafeJmxCredentialStore().also { myJmxCredentialStore = it }
+    }
+
     private fun getHost(): TransportHost? {
         return TransportManager.getInstance().findHost(getTransportHostId(), project)
     }
@@ -66,10 +95,11 @@ class ResinRemoteModel : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>()
     }
 
     override fun transferFile(webAppFile: File): Boolean {
-        val target = getTransportHostTarget()
-        return target != null && target.transfer(
+        val target = getTransportHostTarget() ?: return false
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile) ?: return false
+        return target.transfer(
             project,
-            Collections.singletonList(LocalFileSystem.getInstance().refreshAndFindFileByIoFile(webAppFile)),
+            Collections.singletonList(virtualFile),
         )
     }
 

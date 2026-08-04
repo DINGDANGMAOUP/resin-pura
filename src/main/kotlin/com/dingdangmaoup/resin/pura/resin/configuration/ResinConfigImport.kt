@@ -9,12 +9,14 @@ import org.jdom.JDOMException
 import java.io.File
 import java.io.IOException
 
-class ResinConfigImport(private val myRoot: Element) {
+class ResinConfigImport(
+    private val myRoot: Element,
+    private val mySourceFile: File,
+) {
     private val myImportDoc: NullableLazyValue<Element> = object : NullableLazyValue<Element>() {
         override fun compute(): Element? {
-            val path = myRoot.getAttributeValue(ResinXmlConfigurationStrategy.IMPORT_SINGLE_PATH_ATTRIBUTE)
             return try {
-                JDOMUtil.load(File(path))
+                JDOMUtil.load(mySourceFile)
             } catch (e: JDOMException) {
                 LOG.debug(e)
                 null
@@ -29,6 +31,8 @@ class ResinConfigImport(private val myRoot: Element) {
     private var myCopyException: ExecutionException? = null
 
     fun getImportDoc(): Element? = myImportDoc.value
+
+    fun getSourceDirectory(): File = mySourceFile.absoluteFile.parentFile
 
     fun copy() {
         if (myCopy == null && myCopyException == null) {

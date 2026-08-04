@@ -73,22 +73,46 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
   build:
-    name: Build release artifact
+    name: Verify and build release artifact
     needs: [ metadata ]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Fetch Sources
         uses: actions/checkout@v4
       - name: Setup Build Toolchain
         uses: ./.github/actions/setup-gradle-java
-      - name: Build Plugin
-        run: ./gradlew buildPlugin
+      - name: Maximize build space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          large-packages: false
+      - name: Test compatibility floor
+        run: ./gradlew test -PplatformVersion=2024.2
+      - name: Verify and Build Plugin
+        run: ./gradlew check buildPlugin verifyPlugin
+      - name: Create artifact checksum
+        shell: bash
+        run: |
+          cd build/distributions
+          shopt -s nullglob
+          artifacts=(*.zip)
+          if [ "${#artifacts[@]}" -ne 1 ]; then
+            echo "Expected exactly one plugin ZIP, found ${#artifacts[@]}"
+            exit 1
+          fi
+          release_artifact="${artifacts[0]// /.}"
+          if [ "$release_artifact" != "${artifacts[0]}" ]; then
+            mv -- "${artifacts[0]}" "$release_artifact"
+          fi
+          sha256sum "$release_artifact" > SHA256SUMS
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-plugin-zip
-          path: ./build/distributions/*.zip
+          path: |
+            ./build/distributions/*.zip
+            ./build/distributions/SHA256SUMS
           if-no-files-found: error
 
   release:
@@ -107,12 +131,12 @@ jobs:
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ needs.metadata.outputs.changelog }}
         run: |
-          cat > release-notes.md << 'EOF'
-          ${{ needs.metadata.outputs.changelog }}
-          EOF
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
           gh release create "${{ needs.metadata.outputs.version }}" \
             -R "${{ github.repository }}" \
             --title "${{ needs.metadata.outputs.version }}" \
             --notes-file release-notes.md \
-            ./release-artifacts/*.zip
+            ./release-artifacts/*.zip \
+            ./release-artifacts/SHA256SUMS
