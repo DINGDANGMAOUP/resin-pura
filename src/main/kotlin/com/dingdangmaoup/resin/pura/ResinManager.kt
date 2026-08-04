@@ -11,7 +11,7 @@ import com.intellij.javaee.web.WebFacetContextProvider
 import javax.swing.Icon
 
 class ResinManager : AppServerIntegration() {
-    private val deploymentProvider = ResinDeploymentProvider()
+    private val deploymentProvider: DeploymentProvider = ResinDeploymentProvider()
     private val resinApplicationServerHelper: ApplicationServerHelper = ResinApplicationServerHelper()
     private var myUrlMapping: ApplicationServerUrlMapping? = null
 
@@ -19,9 +19,8 @@ class ResinManager : AppServerIntegration() {
 
     override fun getPresentableName(): String = ResinBundle.message("resin.application.server.name")
 
-    override fun getDeploymentProvider(local: Boolean): DeploymentProvider? {
-        return if (local) deploymentProvider else null
-    }
+    // Each DeploymentMethod decides whether it supports local or remote models; both need the provider itself.
+    override fun getDeploymentProvider(local: Boolean): DeploymentProvider = deploymentProvider
 
     override fun getApplicationServerHelper(): ApplicationServerHelper = resinApplicationServerHelper
 

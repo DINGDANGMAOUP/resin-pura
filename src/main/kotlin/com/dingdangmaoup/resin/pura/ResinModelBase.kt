@@ -3,6 +3,7 @@ package com.dingdangmaoup.resin.pura
 import com.dingdangmaoup.resin.pura.resin.ResinInstallation
 import com.dingdangmaoup.resin.pura.resin.ResinPersistentDataHelper
 import com.dingdangmaoup.resin.pura.resin.configuration.JmxConfigurationStrategy
+import com.intellij.configurationStore.serializeObjectInto
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.configurations.RuntimeConfigurationException
 import com.intellij.execution.process.ProcessHandler
@@ -19,7 +20,6 @@ import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.InvalidDataException
 import com.intellij.openapi.util.WriteExternalException
-import com.intellij.util.xmlb.SkipDefaultValuesSerializationFilters
 import com.intellij.util.xmlb.XmlSerializer
 import org.jdom.Element
 import java.io.File
@@ -73,8 +73,10 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
 
     final override fun createServerInstance(): J2EEServerInstance = ResinServerInstance(getCommonModel())
 
+    // Build 262 still declares this scheduled-for-removal method as abstract. ResinManager now owns the provider;
+    // keep only the nullable bridge required by older IDEs, matching the platform's own JavaEE implementation.
     @Suppress("OVERRIDE_DEPRECATION")
-    final override fun getDeploymentProvider(): DeploymentProvider = ResinDeploymentProvider()
+    final override fun getDeploymentProvider(): DeploymentProvider? = null
 
     final override fun getDefaultUrlForBrowser(): String {
         val commonModel = getCommonModel()
@@ -131,9 +133,8 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     }
 
     @Throws(WriteExternalException::class)
-    @Suppress("DEPRECATION")
     final override fun writeExternal(element: Element) {
-        XmlSerializer.serializeInto(myData, element, SkipDefaultValuesSerializationFilters())
+        serializeObjectInto(myData, element)
     }
 
     fun hasJmxStrategy(): Boolean = helper.hasJmxStrategy()
