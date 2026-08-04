@@ -4,6 +4,7 @@ import com.dingdangmaoup.resin.pura.resin.ResinConfiguration
 import com.dingdangmaoup.resin.pura.resin.ResinInstallation
 import com.dingdangmaoup.resin.pura.resin.version.ResinVersion
 import com.intellij.execution.ExecutionException
+import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.configurations.JavaParameters
 import com.intellij.execution.configurations.ParametersList
 import com.intellij.javaee.appServers.deployment.DeploymentModel
@@ -56,7 +57,11 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
         val installation: ResinInstallation = resinConfiguration.getInstallation()
         val homePath = FileUtil.toSystemDependentName(installation.getResinHome().path)
 
-        val parameters = JavaParameters()
+        val parameters = if (prepareResult == null) {
+            JavaParameters()
+        } else {
+            SecureJmxJavaParameters(resinModel.jmxPort, prepareResult)
+        }
         val charset = resinModel.charset
         if (charset.isNotEmpty()) {
             parameters.charset = Charset.forName(charset)
@@ -72,7 +77,6 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
 
         if (resinModel.hasJmxStrategy()) {
             loadResinRunProp(JMX_VM_PARAMS_PROP, parameters, resinModel.jmxPort.toString())
-            JmxRemoteUtil.apply(parameters.vmParametersList, prepareResult)
         }
 
         loadResinRunProp(RESINHOME_VM_PARAMS_PROP, parameters, homePath)
@@ -99,6 +103,15 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
             parametersList.addParametersString(additionalParameters)
         }
         loadResinConfProperties(homePath, parameters)
+
+        if (prepareResult != null) {
+            enforceJmxSecurity(
+                parameters.vmParametersList,
+                parameters.programParametersList,
+                resinModel.jmxPort,
+                prepareResult,
+            )
+        }
 
         val classpath: PathsList = parameters.classPath
 
@@ -138,18 +151,7 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     @Throws(ExecutionException::class)
     private fun allowsRunWithWhiteSpace(resinVersion: ResinVersion): Boolean {
         val value = getResinRunProperty(RESIN_VERSIONS_INVALID_PATHS_PROP)
-        val invalids: List<String> = listOf(*value)
-        val verNumber = resinVersion.getVersionNumber()
-        if (invalids.contains(verNumber)) {
-            return false
-        }
-        val toCheck = verNumber.split("\\.".toRegex())
-        for (actual in toCheck) {
-            if (invalids.contains("$actual.x")) {
-                return false
-            }
-        }
-        return true
+        return isWhitespacePathSupported(resinVersion.getVersionNumber(), value.asList())
     }
 
     @Throws(ExecutionException::class)
@@ -176,8 +178,10 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     private fun loadResinRunProperties() {
         if (resinRunProps != null) return
         resinRunProps = Properties()
+        val stream = javaClass.getResourceAsStream(RESIN_RUN_PROP_FILE)
+            ?: throw ExecutionException(ResinBundle.message("resin.run.startup.no.prop"))
         try {
-            resinRunProps!!.load(javaClass.getResourceAsStream(RESIN_RUN_PROP_FILE))
+            stream.use { resinRunProps!!.load(it) }
         } catch (_: IOException) {
             throw ExecutionException(ResinBundle.message("resin.run.startup.no.prop"))
         }
@@ -197,12 +201,126 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
         private const val RESIN_PROPERTIES_FILE_PATH = "/conf/resin.properties"
         private const val RESIN_JVM_ARGS_PROP = "jvm_args"
 
+        internal fun isWhitespacePathSupported(versionNumber: String, invalidVersions: Collection<String>): Boolean {
+            if (versionNumber in invalidVersions) return false
+
+            val versionParts = versionNumber.split('.')
+            for (index in 1 until versionParts.size) {
+                val wildcard = versionParts.take(index).joinToString(".") + ".x"
+                if (wildcard in invalidVersions) return false
+            }
+            return true
+        }
+
+        @Throws(ExecutionException::class)
+        internal fun enforceJmxSecurity(
+            vmParameters: ParametersList,
+            programParameters: ParametersList,
+            jmxPort: Int,
+            prepareResult: JmxRemotePrepareResult,
+        ) {
+            if (jmxPort !in 1..65535) {
+                throw ExecutionException("JMX port must be between 1 and 65535")
+            }
+
+            val passwordPath: String
+            val accessPath: String
+            try {
+                passwordPath = prepareResult.passwordFile.canonicalPath
+                accessPath = prepareResult.accessFile.canonicalPath
+            } catch (e: IOException) {
+                throw ExecutionException(e)
+            }
+
+            // resin.properties is user-controlled and is loaded after the standard VM arguments.
+            // Remove every security-sensitive definition before appending one authoritative value;
+            // ParametersList#defineProperty intentionally keeps an earlier duplicate unchanged.
+            val protectedProperties = linkedMapOf(
+                JMX_PORT_PROPERTY to jmxPort.toString(),
+                JMX_SSL_PROPERTY to "false",
+                JMX_AUTHENTICATE_PROPERTY to "true",
+                JMX_PASSWORD_FILE_PROPERTY to passwordPath,
+                JMX_ACCESS_FILE_PROPERTY to accessPath,
+                JMX_HOST_PROPERTY to LOOPBACK_ADDRESS,
+                RMI_HOSTNAME_PROPERTY to LOOPBACK_ADDRESS,
+            )
+            replaceProperties(vmParameters, protectedProperties)
+            replaceResinChildJmxArguments(programParameters, protectedProperties)
+        }
+
+        private fun replaceProperties(parameters: ParametersList, properties: Map<String, String>) {
+            val retained = parameters.list.filterNot { parameter ->
+                getProtectedPropertyName(parameter) != null
+            }
+            parameters.clearAll()
+            parameters.addAll(retained)
+            parameters.add("-D$JMX_ENABLE_PROPERTY")
+            parameters.add("-D$JMX_BUILDER_PROPERTY=$JMX_BUILDER_CLASS")
+            for ((name, value) in properties) {
+                parameters.add("-D$name=$value")
+            }
+        }
+
+        private fun replaceResinChildJmxArguments(parameters: ParametersList, properties: Map<String, String>) {
+            val retained = ArrayList<String>()
+            val current = parameters.list
+            var index = 0
+            while (index < current.size) {
+                val parameter = current[index]
+                if (parameter == RESIN_JMX_PORT_ARGUMENT || parameter == RESIN_JMX_PORT_LONG_ARGUMENT) {
+                    index++
+                    // A split Resin port option normally owns the following value. Preserve a
+                    // following option, though, so a dangling/malformed -jmx-port cannot make the
+                    // security filter accidentally consume an unrelated Resin argument.
+                    if (index < current.size && isResinJmxPortValue(current[index])) {
+                        index++
+                    }
+                    continue
+                }
+                if (parameter.startsWith("$RESIN_JMX_PORT_ARGUMENT=") ||
+                    parameter.startsWith("$RESIN_JMX_PORT_LONG_ARGUMENT=") ||
+                    getProtectedPropertyName(parameter) != null
+                ) {
+                    index++
+                    continue
+                }
+                retained.add(parameter)
+                index++
+            }
+
+            parameters.clearAll()
+            parameters.addAll(retained)
+            parameters.add("-J-D$JMX_ENABLE_PROPERTY")
+            parameters.add("-J-D$JMX_BUILDER_PROPERTY=$JMX_BUILDER_CLASS")
+            for ((name, value) in properties) {
+                parameters.add("-J-D$name=$value")
+            }
+        }
+
+        private fun isResinJmxPortValue(parameter: String): Boolean =
+            parameter.toIntOrNull() != null || !parameter.startsWith('-')
+
+        private fun getProtectedPropertyName(parameter: String): String? {
+            val definition = when {
+                parameter.startsWith("-J-D") -> parameter.substring(4)
+                parameter.startsWith("-D") -> parameter.substring(2)
+                else -> return null
+            }
+            val name = definition.substringBefore('=')
+            return name.takeIf {
+                it == JMX_ENABLE_PROPERTY ||
+                    it.startsWith("$JMX_ENABLE_PROPERTY.") ||
+                    it == RMI_HOSTNAME_PROPERTY ||
+                    it == JMX_BUILDER_PROPERTY
+            }
+        }
+
         private fun loadResinConfProperties(homePath: String, parameters: JavaParameters) {
             val propertiesFile = File(FileUtil.toSystemDependentName(homePath + RESIN_PROPERTIES_FILE_PATH))
             if (!propertiesFile.exists()) return
             val props = Properties()
             try {
-                props.load(FileReader(propertiesFile))
+                FileReader(propertiesFile).use(props::load)
             } catch (e: IOException) {
                 LOG.info(e)
             }
@@ -210,6 +328,33 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
             if (!jvmArgs.isNullOrEmpty()) {
                 parameters.vmParametersList.addParametersString(jvmArgs)
             }
+        }
+
+        private const val JMX_PORT_PROPERTY = "com.sun.management.jmxremote.port"
+        private const val JMX_ENABLE_PROPERTY = "com.sun.management.jmxremote"
+        private const val JMX_SSL_PROPERTY = "com.sun.management.jmxremote.ssl"
+        private const val JMX_AUTHENTICATE_PROPERTY = "com.sun.management.jmxremote.authenticate"
+        private const val JMX_PASSWORD_FILE_PROPERTY = "com.sun.management.jmxremote.password.file"
+        private const val JMX_ACCESS_FILE_PROPERTY = "com.sun.management.jmxremote.access.file"
+        private const val JMX_HOST_PROPERTY = "com.sun.management.jmxremote.host"
+        private const val RMI_HOSTNAME_PROPERTY = "java.rmi.server.hostname"
+        private const val JMX_BUILDER_PROPERTY = "javax.management.builder.initial"
+        private const val JMX_BUILDER_CLASS = "com.caucho.jmx.MBeanServerBuilderImpl"
+        private const val RESIN_JMX_PORT_ARGUMENT = "-jmx-port"
+        private const val RESIN_JMX_PORT_LONG_ARGUMENT = "--jmx-port"
+        private const val LOOPBACK_ADDRESS = "127.0.0.1"
+    }
+
+    internal class SecureJmxJavaParameters(
+        private val jmxPort: Int,
+        private val prepareResult: JmxRemotePrepareResult,
+    ) : JavaParameters() {
+        override fun toCommandLine(): GeneralCommandLine {
+            // JavaCommandLineLocalState appends common VM options and run extensions after
+            // the startup policy returns. Re-apply the invariant at the final conversion
+            // boundary so no later duplicate can weaken authentication or loopback binding.
+            enforceJmxSecurity(vmParametersList, programParametersList, jmxPort, prepareResult)
+            return super.toCommandLine()
         }
     }
 }

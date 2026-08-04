@@ -1,15 +1,23 @@
 package com.dingdangmaoup.resin.pura.resin.jmx
 
-import com.dingdangmaoup.resin.pura.ResinModelBase
+import com.dingdangmaoup.resin.pura.ResinRemoteModel
 import com.dingdangmaoup.resin.pura.resin.configuration.Resin3XConfigurationStrategy
 import java.io.IOException
 import javax.management.JMException
 import javax.management.MBeanServerConnection
 
-class ConnectorPingCommand(resinModel: ResinModelBase<*>, private val myJmxPort: Int) : ConnectorCommandBase<Boolean>(resinModel) {
-    override fun getJmxPort(): Int = myJmxPort
+internal class ConnectorPingCommand(
+    resinModel: ResinRemoteModel,
+    private val endpoint: JmxEndpoint,
+    credentialSource: JmxCredentialSource,
+) : ConnectorCommandBase<Boolean>(
+    resinModel,
+    { resolveCredentialSource(credentialSource) { resinModel.loadJmxCredentials(endpoint) } },
+) {
+    override fun getHost(): String = endpoint.connectionHost
 
-    // TODO: check behavior if ping is insuccessful - ex should not be logged
+    override fun getJmxPort(): Int = endpoint.port
+
     @Throws(JMException::class, IOException::class)
     override fun doExecute(connection: MBeanServerConnection): Boolean {
         val state = connection.getAttribute(

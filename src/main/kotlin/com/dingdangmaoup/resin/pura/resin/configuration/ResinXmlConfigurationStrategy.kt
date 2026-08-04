@@ -16,22 +16,28 @@ open class ResinXmlConfigurationStrategy(resinInstallation: ResinInstallation) :
     override fun init(serverModel: ResinModel, element: Element) {
         super.init(serverModel, element)
         myImports = ArrayList()
-        resolveImports(element, myImports)
+        val sourceDirectory = getSourceConfigDirectory() ?: File(getInstallation().getResinHome(), "conf")
+        resolveImports(element, myImports, sourceDirectory)
     }
 
     override fun getDefaultResinConfContent(): InputStream? = javaClass.getResourceAsStream(RESIN_CONF)
 
-    protected fun resolveImports(rootElement: Element, imports: MutableList<ResinConfigImport>?) {
-
-        val confFolder = File(getInstallation().getResinHome(), "conf")
-        val confFolderPath = FileUtil.toSystemIndependentName(confFolder.absolutePath)
+    protected fun resolveImports(
+        rootElement: Element,
+        imports: MutableList<ResinConfigImport>?,
+        sourceDirectory: File = File(getInstallation().getResinHome(), "conf"),
+    ) {
         val elements = findImportElements(rootElement)
         for (importAttrName in IMPORT_ATTRIBUTE_NAMES) {
             for (element in elements) {
                 val path = element.getAttributeValue(importAttrName) ?: continue
-                element.setAttribute(importAttrName, StringUtil.replace(path, CONF_FOLDER_VAR, confFolderPath))
+                val resolvedPath = resolveDirectoryVariable(path, sourceDirectory)
+                element.setAttribute(importAttrName, resolvedPath)
                 if (imports != null && StringUtil.equals(IMPORT_SINGLE_PATH_ATTRIBUTE, importAttrName)) {
-                    imports.add(ResinConfigImport(element))
+                    val importFile = resolveImportFile(resolvedPath, getInstallation().getResinHome())
+                    if (importFile != null) {
+                        imports.add(ResinConfigImport(element, importFile))
+                    }
                 }
             }
         }
@@ -60,5 +66,20 @@ open class ResinXmlConfigurationStrategy(resinInstallation: ResinInstallation) :
                 .filter { it.getQualifiedName() in IMPORT_ELEMENT_NAMES }
                 .toList()
         }
+
+        internal fun resolveDirectoryVariable(path: String, sourceDirectory: File): String {
+            val sourceDirectoryPath = FileUtil.toSystemIndependentName(sourceDirectory.absolutePath)
+            return StringUtil.replace(path, CONF_FOLDER_VAR, sourceDirectoryPath)
+        }
+
+        internal fun resolveImportFile(path: String, resinHome: File): File? {
+            if (path.contains("\${")) return null
+            val candidate = File(FileUtil.toSystemDependentName(path))
+            if (candidate.isAbsolute) return candidate
+            if (URI_SCHEME.matches(path.substringBefore('/'))) return null
+            return File(resinHome, candidate.path)
+        }
+
+        private val URI_SCHEME = Regex("[A-Za-z][A-Za-z0-9+.-]*:.*")
     }
 }

@@ -4,10 +4,10 @@ import com.intellij.util.xmlb.annotations.Tag
 
 open class ResinModelDataBase {
     @field:Tag("port")
-    var port: Int = ResinUtil.DEFAULT_PORT
+    var port: Int = ResinUtil.LEGACY_DEFAULT_PORT
 
     @field:Tag("mbean-port")
-    var jmxPort: Int = 9999 // TODO: move to const
+    var jmxPort: Int = ResinUtil.DEFAULT_JMX_PORT
 
     var charset: String = ""
 }

@@ -3,10 +3,12 @@ package com.dingdangmaoup.resin.pura
 import com.dingdangmaoup.resin.pura.resin.ResinInstallation
 import com.dingdangmaoup.resin.pura.resin.ResinPersistentDataHelper
 import com.dingdangmaoup.resin.pura.resin.configuration.JmxConfigurationStrategy
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxCredentials
 import com.intellij.configurationStore.serializeObjectInto
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.configurations.RuntimeConfigurationException
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.javaee.appServers.appServerIntegrations.ApplicationServer
 import com.intellij.javaee.appServers.appServerIntegrations.ApplicationServerUrlMapping
 import com.intellij.javaee.appServers.deployment.DeploymentModel
 import com.intellij.javaee.appServers.deployment.DeploymentProvider
@@ -29,6 +31,8 @@ import java.util.HashSet
 abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     private var myData: D = createResinModelData()
     private lateinit var myCommonModel: CommonModel
+    @Volatile
+    private var myHelperCache: HelperCache? = null
 
     protected val data: D
         get() = myData
@@ -55,7 +59,25 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
         }
 
     val helper: ResinPersistentDataHelper
-        get() = ResinPersistentDataHelper(getCommonModel().applicationServer)
+        get() {
+            val applicationServer = getCommonModel().applicationServer
+            val cached = myHelperCache
+            if (cached != null && cached.applicationServer === applicationServer) {
+                return cached.helper
+            }
+
+            return synchronized(this) {
+                val currentApplicationServer = getCommonModel().applicationServer
+                val current = myHelperCache
+                if (current != null && current.applicationServer === currentApplicationServer) {
+                    current.helper
+                } else {
+                    ResinPersistentDataHelper(currentApplicationServer).also { newHelper ->
+                        myHelperCache = HelperCache(currentApplicationServer, newHelper)
+                    }
+                }
+            }
+        }
 
     val installation: ResinInstallation?
         get() = helper.getInstallation()
@@ -73,8 +95,9 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
 
     final override fun createServerInstance(): J2EEServerInstance = ResinServerInstance(getCommonModel())
 
-    // Build 262 still declares this scheduled-for-removal method as abstract. ResinManager now owns the provider;
-    // keep only the nullable bridge required by older IDEs, matching the platform's own JavaEE implementation.
+    // ABI bridge: both the 242 compatibility floor and 262 still declare this for-removal method as abstract.
+    // ResinManager owns the provider through AppServerIntegration; keep the required nullable bridge only,
+    // matching the platform's own JavaeeServerModel implementation until ServerModel removes the method.
     @Suppress("OVERRIDE_DEPRECATION")
     final override fun getDeploymentProvider(): DeploymentProvider? = null
 
@@ -103,6 +126,13 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
                 }
                 cls = cls.superclass
             }
+
+            // IntelliJ clones server models while building editable configuration snapshots.
+            // Keep platform/runtime collaborators shallow, but give persisted model data its
+            // own copy so a draft cannot mutate the live configuration before it is accepted.
+            val serializedData = Element("state")
+            writeExternal(serializedData)
+            copy.readExternal(serializedData)
             return copy
         } catch (e: Exception) {
             val cloneException = CloneNotSupportedException(e.message)
@@ -115,6 +145,16 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
 
     @Throws(RuntimeConfigurationException::class)
     override fun checkConfiguration() {
+        if (!ResinUtil.isValidPort(port)) {
+            throw RuntimeConfigurationError(ResinBundle.message("run.config.dlg.http.port.error", port))
+        }
+        if (!ResinUtil.isValidPort(jmxPort)) {
+            throw RuntimeConfigurationError(ResinBundle.message("run.config.dlg.jmx.port.error", jmxPort))
+        }
+        if (!ResinUtil.isValidCharset(charset)) {
+            throw RuntimeConfigurationError(ResinBundle.message("run.config.dlg.charset.error", charset))
+        }
+
         val contexts = HashSet<String>()
         for (deploymentModel in getCommonModel().deploymentModels) {
             val model = deploymentModel as ResinModuleDeploymentModel
@@ -153,4 +193,17 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     open fun getJmxUsername(): String? = null
 
     open fun getJmxPassword(): String? = null
+
+    internal open fun getJmxCredentials(): JmxCredentials? {
+        val username = getJmxUsername()
+        val password = getJmxPassword()
+        if (username == null && password == null) return null
+        check(!username.isNullOrBlank() && password != null) { "Resin JMX credentials must contain both username and password" }
+        return JmxCredentials(username, password)
+    }
+
+    private data class HelperCache(
+        val applicationServer: ApplicationServer?,
+        val helper: ResinPersistentDataHelper,
+    )
 }

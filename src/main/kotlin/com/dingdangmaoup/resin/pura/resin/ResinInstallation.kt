@@ -9,7 +9,11 @@ import com.intellij.openapi.util.io.FileUtil
 import java.io.File
 
 class ResinInstallation private constructor(private val myHome: File, private val myLib: File) {
-    fun getVersion(): ResinVersion = ResinVersionDetector.getResinVersion(myHome) ?: ResinVersion.UNKNOWN_VERSION
+    private val detectedVersion: ResinVersion by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ResinVersionDetector.getResinVersion(myHome) ?: ResinVersion.UNKNOWN_VERSION
+    }
+
+    fun getVersion(): ResinVersion = detectedVersion
 
     fun isVersionDetected(): Boolean {
         val ver = getVersion()

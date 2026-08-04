@@ -9,12 +9,13 @@ object ResinLibCollector {
 
     @JvmStatic
     fun getLibFiles(libDir: File, all: Boolean): Array<File> {
-        return if (all) {
+        val files = if (all) {
             libDir.listFiles(JAR_FILTER) ?: emptyArray()
         } else {
             libDir.listFiles { dir, name ->
                 JAR_FILTER.accept(File(dir, name)) && (name.contains("jsdk") || name.contains("javaee-"))
             } ?: emptyArray()
         }
+        return files.sortedBy(File::getName).toTypedArray()
     }
 }

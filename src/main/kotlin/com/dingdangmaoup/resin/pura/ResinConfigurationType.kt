@@ -26,7 +26,7 @@ class ResinConfigurationType : JavaeeAppServerConfigurationType("ResinConfigurat
         return J2EEConfigurationFactory.getInstance().createJ2EERunConfiguration(
             factory,
             project,
-            if (isLocal) ResinModel() else ResinRemoteModel(),
+            createServerModel(isLocal),
             ResinManager.getInstance(),
             isLocal,
             if (isLocal) ResinStartupPolicy() else null,
@@ -36,6 +36,9 @@ class ResinConfigurationType : JavaeeAppServerConfigurationType("ResinConfigurat
     override fun getIntegration(): AppServerIntegration = ResinManager.getInstance()
 
     companion object {
+        internal fun createServerModel(isLocal: Boolean): ResinModelBase<*> =
+            if (isLocal) ResinModel().apply { port = ResinUtil.DEFAULT_PORT } else ResinRemoteModel()
+
         @JvmStatic
         fun getInstance(): ResinConfigurationType =
             ConfigurationTypeUtil.findConfigurationType(ResinConfigurationType::class.java)
