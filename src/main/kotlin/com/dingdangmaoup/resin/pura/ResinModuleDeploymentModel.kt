@@ -1,12 +1,12 @@
 package com.dingdangmaoup.resin.pura
 
+import com.intellij.configurationStore.serializeObjectInto
 import com.intellij.javaee.appServers.context.DeploymentModelContext
 import com.intellij.javaee.appServers.deployment.DeploymentModel
 import com.intellij.javaee.appServers.deployment.DeploymentSource
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.openapi.util.InvalidDataException
 import com.intellij.openapi.util.WriteExternalException
-import com.intellij.util.xmlb.SkipDefaultValuesSerializationFilters
 import com.intellij.util.xmlb.XmlSerializer
 import org.jdom.Element
 
@@ -37,10 +37,9 @@ class ResinModuleDeploymentModel(commonModel: CommonModel, source: DeploymentSou
         }
 
     @Throws(WriteExternalException::class)
-    @Suppress("DEPRECATION")
     override fun writeExternal(element: Element) {
         super.writeExternal(element)
-        XmlSerializer.serializeInto(myData, element, SkipDefaultValuesSerializationFilters())
+        serializeObjectInto(myData, element)
     }
 
     @Throws(InvalidDataException::class)

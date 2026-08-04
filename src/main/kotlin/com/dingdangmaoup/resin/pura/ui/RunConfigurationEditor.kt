@@ -6,7 +6,7 @@ import com.dingdangmaoup.resin.pura.resin.common.ParseUtil
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.ConfigurationException
-import com.intellij.openapi.ui.TextComponentAccessor
+import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.PanelWithAnchor
 import com.intellij.ui.RawCommandLineEditor
@@ -128,17 +128,13 @@ class RunConfigurationEditor : ResinRunConfigurationEditorBase(), PanelWithAncho
     }
 
     companion object {
-        @Suppress("DEPRECATION")
         private fun initChooser(field: TextFieldWithBrowseButton, title: String, description: String) {
             field.text = ""
             field.textField.isEditable = true
-            field.addBrowseFolderListener(
-                title,
-                description,
-                null,
-                FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
-                TextComponentAccessor.TEXT_FIELD_WHOLE_TEXT,
-            )
+            val descriptor = FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor()
+                .withTitle(title)
+                .withDescription(description)
+            field.addBrowseFolderListener(TextBrowseFolderListener(descriptor, null))
         }
 
         @JvmStatic

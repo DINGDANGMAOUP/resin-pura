@@ -7,7 +7,7 @@ import com.intellij.execution.ExecutionException
 import com.intellij.icons.AllIcons
 import com.intellij.javaee.appServers.appServerIntegrations.ApplicationServerPersistentDataEditor
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
-import com.intellij.openapi.ui.TextComponentAccessor
+import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
@@ -171,7 +171,6 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
         private const val RESIN_CONF_FILE = "conf/resin.xml"
         private const val OLD_RESIN_CONF_FILE = "conf/resin.conf"
 
-        @Suppress("DEPRECATION")
         private fun initChooser(
             field: TextFieldWithBrowseButton,
             title: String,
@@ -181,13 +180,10 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
         ) {
             field.text = ""
             field.textField.isEditable = true
-            field.addBrowseFolderListener(
-                title,
-                description,
-                null,
-                FileChooserDescriptor(chooseFiles, chooseDirs, false, false, false, false),
-                TextComponentAccessor.TEXT_FIELD_WHOLE_TEXT,
-            )
+            val descriptor = FileChooserDescriptor(chooseFiles, chooseDirs, false, false, false, false)
+                .withTitle(title)
+                .withDescription(description)
+            field.addBrowseFolderListener(TextBrowseFolderListener(descriptor, null))
         }
     }
 }
