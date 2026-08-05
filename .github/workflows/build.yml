@@ -100,7 +100,7 @@ jobs:
           large-packages: false
       - name: Setup Plugin Verifier IDEs Cache
         if: ${{ matrix.task == 'verifyPlugin' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ needs.metadata.outputs.pluginVerifierHomeDir }}/ides
           key: plugin-verifier-${{ runner.os }}-${{ hashFiles('gradle.properties', 'build.gradle.kts', 'settings.gradle.kts', 'gradle/libs.versions.toml') }}
