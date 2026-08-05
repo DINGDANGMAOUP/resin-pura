@@ -113,7 +113,7 @@ jobs:
           fi
       - name: Collect Tests Result
         if: ${{ failure() && (matrix.task == 'check' || matrix.task == 'test') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tests-result-${{ matrix.name }}
           path: ${{ github.workspace }}/build/reports/tests
@@ -139,13 +139,13 @@ jobs:
           echo "filename=${FILENAME%.zip}" >> "$GITHUB_OUTPUT"
       - name: Upload Built Plugin
         if: ${{ matrix.task == 'buildPlugin' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact.outputs.filename }}
           path: ./build/distributions/content/*/*
       - name: Collect Plugin Verifier Result
         if: ${{ always() && matrix.task == 'verifyPlugin' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pluginVerifier-result
           path: ${{ github.workspace }}/build/reports/pluginVerifier

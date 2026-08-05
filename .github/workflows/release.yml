@@ -107,7 +107,7 @@ jobs:
           fi
           sha256sum "$release_artifact" > SHA256SUMS
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-plugin-zip
           path: |
