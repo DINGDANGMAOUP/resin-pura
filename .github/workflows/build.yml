@@ -119,7 +119,7 @@ jobs:
           path: ${{ github.workspace }}/build/reports/tests
       - name: Upload Code Coverage Report
         if: ${{ matrix.task == 'check' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ${{ github.workspace }}/build/reports/kover/report.xml
       - name: Prepare Plugin Artifact
