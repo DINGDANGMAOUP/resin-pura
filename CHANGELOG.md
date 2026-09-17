@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [4.1.5] - 2026-09-17
+
+### Fixed
+- Scope XML undeployment to the selected virtual host, preferring exact hosts over regexp fallbacks
+- Restore generated configuration entries on redeployment and verify runtime status instead of reporting success after an XML write
+- Use local JMX deployer directories, reject unsupported custom targets and overlapping source paths, and preserve dotted exploded-directory names during cleanup
+- Stop injecting the obsolete Java 5 source level while retaining explicit compiler options
+- Release generated configuration and imports after startup failures or process exit, and reject session replacement while its process is alive
+- Discard stale directory-detection results and invalidate installation caches when version-detection JARs change
+
+### Changed
+- Separate XML strategies, JMX deployment, local artifact transport, deployment observations, and per-run resources
+- Replace reflective field copying with explicit snapshot collaborators and isolated run sessions
+- Debounce installation inspection and move filesystem/JAR detection off the UI thread
+- Remove unused configuration dialog/helpers/setters and rename the metadata-only version detector
+- Use the checked-in wrapper as the Gradle version source and allow local IDE paths for compatibility validation
+
 ## [4.1.4] - 2026-08-04
 
 ### Added
@@ -76,7 +93,8 @@
 - JMX-based monitoring and control
 - Support for multiple Resin versions (2.x, 3.x, 4.x)
 
-[Unreleased]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.4...HEAD
+[Unreleased]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.5...HEAD
+[4.1.5]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.4...v4.1.5
 [4.1.4]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.3...v4.1.4
 [4.1.3]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.2...v4.1.3
 [4.1.2]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.0...v4.1.2

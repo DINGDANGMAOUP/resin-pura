@@ -1,34 +1,22 @@
 package com.dingdangmaoup.resin.pura.resin.configuration
 
 import com.dingdangmaoup.resin.pura.ResinBundle
-import com.dingdangmaoup.resin.pura.ResinModelBase
 import com.dingdangmaoup.resin.pura.resin.ResinInstallation
 import com.dingdangmaoup.resin.pura.resin.WebApp
-import com.dingdangmaoup.resin.pura.resin.common.MBeanUtil
-import com.dingdangmaoup.resin.pura.resin.jmx.ConnectorCommandBase
 import com.intellij.execution.ExecutionException
-import com.intellij.javaee.appServers.deployment.DeploymentStatus
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.NotNullLazyValue
 import com.intellij.openapi.util.NullableLazyValue
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.text.StringUtil
 import org.jdom.Attribute
 import org.jdom.Element
 import org.jdom.Namespace
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
-import javax.management.InstanceNotFoundException
-import javax.management.JMException
-import javax.management.MBeanServerConnection
-import javax.management.ObjectName
 
 open class Resin3XConfigurationStrategy(private val myResinInstallation: ResinInstallation) :
-    ResinConfigurationStrategy(),
-    JmxConfigurationStrategy {
+    ResinConfigurationStrategy() {
     private val myElementsProvider: NotNullLazyValue<ElementsProvider> = NotNullLazyValue.lazy { createElementsProvider() }
 
     protected fun getInstallation(): ResinInstallation = myResinInstallation
@@ -110,16 +98,7 @@ open class Resin3XConfigurationStrategy(private val myResinInstallation: ResinIn
             val webAppHost = webApp.getHost()
 
             val hosts = hostParent.getChildren(HOST, ns)
-            for (host in hosts) {
-                val idAttribute = host.getAttribute(ID)
-                if (idAttribute != null && StringUtil.equals(idAttribute.value, webAppHost)) {
-                    return host
-                }
-                val regexpAttribute = host.getAttribute(REGEXP_ATTR)
-                if (regexpAttribute != null && webAppHost.matches(regexpAttribute.value.toRegex())) {
-                    return host
-                }
-            }
+            HostSelector.find(hosts, webAppHost)?.let { return it }
 
             val host = Element(HOST, ns)
             host.setAttribute(ID, webAppHost)
@@ -132,169 +111,19 @@ open class Resin3XConfigurationStrategy(private val myResinInstallation: ResinIn
     }
 
     override fun undeploy(webApp: WebApp): Boolean {
-        var dirty = false
         val elementsProvider = getElementsProvider()
         val ns = elementsProvider.getNS()
         val hosts = elementsProvider.getHostParent().getChildren(HOST, ns)
-        for (hostEl in hosts) {
-            val webAppEl = findWebAppElement(hostEl, webApp.getContextPath())
-            if (webAppEl != null) {
-                hostEl.removeContent(webAppEl)
-                dirty = true
-            }
-        }
-        return dirty
+        val host = HostSelector.find(hosts, webApp.getHost()) ?: return false
+        val webAppElement = findWebAppElement(host, webApp.getContextPath()) ?: return false
+        return host.removeContent(webAppElement)
     }
 
     override fun getDefaultResinConfContent(): InputStream? = javaClass.getResourceAsStream(RESIN_CONF)
 
-    override fun deployWithJmx(resinModel: ResinModelBase<*>, webApp: WebApp): Boolean {
-        val location = webApp.getLocation() ?: return false
-        val webAppFile = File(FileUtil.toSystemDependentName(location))
-        if (!webAppFile.exists()) {
-            LOG.error("Can't find web app")
-            return false
-        }
-
-        if (getDeployStateWithJmx(resinModel, webApp, Ref.create(false)) != DeploymentStatus.UNKNOWN &&
-            !executeUndeployCommand(resinModel, webAppFile)
-        ) {
-            return false
-        }
-
-        if (!cleanUpWebApp(resinModel, webAppFile)) {
-            return false
-        }
-        if (!resinModel.transferFile(webAppFile)) {
-            return false
-        }
-        val deployCommand = DeployCommand(resinModel, "start", getArchiveKey(webAppFile))
-        if (!deployCommand.safeExecute() || deployCommand.getResult() != true) {
-            return false
-        }
-        return true
-    }
-
-    override fun getDeployStateWithJmx(
-        resinModel: ResinModelBase<*>,
-        webApp: WebApp,
-        isFinal: Ref<Boolean>,
-    ): DeploymentStatus {
-        val location = webApp.getLocation() ?: return DeploymentStatus.FAILED
-        val webAppFile = File(FileUtil.toSystemDependentName(location))
-        if (!webAppFile.exists()) {
-            isFinal.set(true)
-            return DeploymentStatus.FAILED
-        }
-
-        val getStateCommand = GetStateCommand(resinModel, webAppFile)
-        if (!getStateCommand.safeExecute()) {
-            isFinal.set(true)
-            return DeploymentStatus.FAILED
-        }
-
-        val state = when (val result = getStateCommand.getResult()) {
-            is WebAppStateResult.Found -> result.state
-            WebAppStateResult.Missing -> return DeploymentStatus.UNKNOWN
-            null -> return DeploymentStatus.FAILED
-        }
-        return if (STATE_JMX_ATTRIBUTE_ACTIVE.equals(state, ignoreCase = true)) {
-            isFinal.set(true)
-            DeploymentStatus.DEPLOYED
-        } else if (STATE_JMX_ATTRIBUTE_ERROR.equals(state, ignoreCase = true) ||
-            STATE_JMX_ATTRIBUTE_FAILED.equals(state, ignoreCase = true)
-        ) {
-            isFinal.set(true)
-            DeploymentStatus.FAILED
-        } else {
-            DeploymentStatus.UNKNOWN
-        }
-    }
-
-    override fun undeployWithJmx(resinModel: ResinModelBase<*>, webApp: WebApp): Boolean {
-        val location = webApp.getLocation() ?: return false
-        val webAppFile = File(FileUtil.toSystemDependentName(location))
-        if (!webAppFile.exists()) {
-            LOG.error("Can't find web app")
-            return false
-        }
-
-        if (!executeUndeployCommand(resinModel, webAppFile)) {
-            return false
-        }
-        if (!cleanUpWebApp(resinModel, webAppFile)) {
-            return false
-        }
-
-        val getStateCommand = GetStateCommand(resinModel, webAppFile)
-        if (!getStateCommand.safeExecute()) {
-            return false
-        }
-        return getStateCommand.getResult() == WebAppStateResult.Missing
-    }
-
-    internal open fun executeUndeployCommand(resinModel: ResinModelBase<*>, webAppFile: File): Boolean {
-        // ArchiveDeployMXBean#undeploy(String) is shared by Resin 3 and 4. Calling
-        // WebApp#destroy directly is not available on Resin 3 and reports false positives
-        // when AbstractConnectorCommand converts a JMX exception into a null result.
-        val command = DeployCommand(resinModel, "undeploy", getArchiveKey(webAppFile))
-        return command.safeExecute() && command.getResult() == true
-    }
-
-    internal open fun cleanUpWebApp(resinModel: ResinModelBase<*>, webAppFile: File): Boolean {
-        if (!webAppFile.isDirectory &&
-            !resinModel.deleteFile(File(webAppFile.parent, FileUtilRt.getNameWithoutExtension(webAppFile.name)))
-        ) {
-            return false
-        }
-        return resinModel.deleteFile(webAppFile)
-    }
-
-    internal fun getArchiveKey(webAppFile: File): String {
-        val fileName = webAppFile.name
-        val trimExtension = !(webAppFile.isDirectory && myResinInstallation.getVersion().getParsed().compare(4, 0, 10) > 0)
-        return if (trimExtension) FileUtilRt.getNameWithoutExtension(fileName) else fileName
-    }
-
     protected open fun createElementsProvider(): ElementsProvider = ElementsProvider(getElement())
 
     protected fun getElementsProvider(): ElementsProvider = myElementsProvider.value
-
-    private class DeployCommand(
-        resinModel: ResinModelBase<*>,
-        private val myCommand: String,
-        private val myArg: String,
-    ) : ConnectorCommandBase<Boolean>(resinModel) {
-        @Throws(JMException::class, IOException::class)
-        override fun doExecute(connection: MBeanServerConnection): Boolean {
-            return invokeArchiveCommand(connection, myCommand, myArg)
-        }
-    }
-
-    private abstract inner class WebAppCommandBase<T : Any>(resinModel: ResinModelBase<*>, webAppFile: File) :
-        ConnectorCommandBase<T>(resinModel) {
-        private val myObjectName: ObjectName = createWebAppObjectName(getArchiveKey(webAppFile))
-
-        @Throws(JMException::class, IOException::class)
-        override fun doExecute(connection: MBeanServerConnection): T? = doExecute(connection, myObjectName)
-
-        @Throws(JMException::class, IOException::class)
-        protected abstract fun doExecute(connection: MBeanServerConnection, objectName: ObjectName): T?
-    }
-
-    private inner class GetStateCommand(resinModel: ResinModelBase<*>, webAppFile: File) :
-        WebAppCommandBase<WebAppStateResult>(resinModel, webAppFile) {
-        @Throws(JMException::class, IOException::class)
-        override fun doExecute(connection: MBeanServerConnection, objectName: ObjectName): WebAppStateResult {
-            return readWebAppState(connection, objectName)
-        }
-    }
-
-    internal sealed interface WebAppStateResult {
-        data class Found(val state: String) : WebAppStateResult
-
-        data object Missing : WebAppStateResult
-    }
 
     protected open class ElementsProvider(private val myRootElement: Element) {
         private val myNS: Namespace = myRootElement.namespace
@@ -330,7 +159,6 @@ open class Resin3XConfigurationStrategy(private val myResinInstallation: ResinIn
     }
 
     companion object {
-        private val LOG = Logger.getInstance(Resin3XConfigurationStrategy::class.java)
         protected const val SERVER_ELEMENT = "server"
         protected const val SERVER_DEFAULT_ELEMENT = "server-default"
         protected const val HTTP = "http"
@@ -348,97 +176,12 @@ open class Resin3XConfigurationStrategy(private val myResinInstallation: ResinIn
         private const val ROOT_EXPAND_DIR = "ROOT"
         private const val DEFAULT_EXPAND_DIR = "webapps"
         private const val PATH_ATTR = "path"
-        private const val REGEXP_ATTR = "regexp"
         protected const val RESIN_CONF = "resin3.conf"
-
-        @JvmField
-        val MBEAN_WEB_APP_DEPLOY: ObjectName = MBeanUtil.newObjectName("resin:type=WebAppDeploy,Host=default,name=webapps")
-
-        private const val ROOT_ARCHIVE_KEY = "ROOT"
-        private val OBJECT_NAME_QUOTE_CHARS = setOf(',', '=', ':', '"', '*', '?')
-
-        internal fun createWebAppObjectName(archiveKey: String): ObjectName {
-            require('\n' !in archiveKey && '\r' !in archiveKey) { "WebApp archive names must not contain line breaks" }
-            val webAppName = if (archiveKey.equals(ROOT_ARCHIVE_KEY, ignoreCase = true)) "/" else "/$archiveKey"
-            val propertyValue = if (webAppName.any(OBJECT_NAME_QUOTE_CHARS::contains)) {
-                ObjectName.quote(webAppName)
-            } else {
-                webAppName
-            }
-            return MBeanUtil.newObjectName("resin:type=WebApp,Host=default,name=$propertyValue").also { objectName ->
-                check(!objectName.isPattern) { "WebApp ObjectName must be exact" }
-            }
-        }
-
-        @Throws(JMException::class, IOException::class)
-        internal fun readWebAppState(
-            connection: MBeanServerConnection,
-            objectName: ObjectName,
-        ): WebAppStateResult {
-            return try {
-                WebAppStateResult.Found(connection.getAttribute(objectName, STATE_JMX_ATTRIBUTE) as String)
-            } catch (_: InstanceNotFoundException) {
-                WebAppStateResult.Missing
-            }
-        }
-
-        @Throws(JMException::class, IOException::class)
-        internal fun refreshArchiveIndex(connection: MBeanServerConnection, archiveKey: String): Boolean {
-            connection.invoke(MBEAN_WEB_APP_DEPLOY, UPDATE_OPERATION, emptyArray(), emptyArray())
-            val names = connection.getAttribute(MBEAN_WEB_APP_DEPLOY, NAMES_JMX_ATTRIBUTE)
-            return when (names) {
-                is Array<*> -> names.any { archiveNameMatches(it, archiveKey) }
-                is Collection<*> -> names.any { archiveNameMatches(it, archiveKey) }
-                else -> false
-            }
-        }
-
-        private fun archiveNameMatches(name: Any?, archiveKey: String): Boolean {
-            return if (archiveKey.equals(ROOT_ARCHIVE_KEY, ignoreCase = true)) {
-                name is String && name.equals(ROOT_ARCHIVE_KEY, ignoreCase = true)
-            } else {
-                name == archiveKey
-            }
-        }
-
-        @Throws(JMException::class, IOException::class)
-        internal fun invokeArchiveCommand(
-            connection: MBeanServerConnection,
-            command: String,
-            archiveKey: String,
-        ): Boolean {
-            if (!refreshArchiveIndex(connection, archiveKey)) {
-                return command == UNDEPLOY_OPERATION
-            }
-            connection.invoke(
-                MBEAN_WEB_APP_DEPLOY,
-                command,
-                arrayOf(archiveKey),
-                arrayOf(String::class.java.name),
-            )
-            return true
-        }
-
-        @JvmField
-        val STATE_JMX_ATTRIBUTE: String = "State"
-
-        private const val NAMES_JMX_ATTRIBUTE = "Names"
-        private const val UPDATE_OPERATION = "update"
-        private const val UNDEPLOY_OPERATION = "undeploy"
-
-        @JvmField
-        val STATE_JMX_ATTRIBUTE_ACTIVE: String = "active"
-
-        @JvmField
-        val STATE_JMX_ATTRIBUTE_ERROR: String = "error"
-
-        @JvmField
-        val STATE_JMX_ATTRIBUTE_FAILED: String = "failed"
 
         private fun findWebAppElement(host: Element, contextPath: String): Element? {
             val webApps = host.getChildren(WEB_APP_ELEMENT, host.namespace)
             for (webAppEl in webApps) {
-                if (webAppEl.getAttribute(ID).value == contextPath) {
+                if (webAppEl.getAttributeValue(ID) == contextPath) {
                     return webAppEl
                 }
             }

@@ -1,7 +1,8 @@
 package com.dingdangmaoup.resin.pura
 
 import com.dingdangmaoup.resin.pura.resin.ResinConfiguration
-import com.dingdangmaoup.resin.pura.resin.ResinInstallation
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxDeploymentClient
+import com.dingdangmaoup.resin.pura.resin.ResinRunSession
 import com.dingdangmaoup.resin.pura.ui.DeploymentSettingsEditor
 import com.dingdangmaoup.resin.pura.ui.RunConfigurationEditor
 import com.intellij.execution.ExecutionException
@@ -21,11 +22,15 @@ import java.io.IOException
 import java.util.Collections
 
 class ResinModel : ResinModelBase<ResinModel.ResinLocalModelData>(), JmxRemoteAware {
-    private var myConfiguration: ResinConfiguration? = null
-    private var myJmxUsername: String? = null
-    private var myJmxPassword: String? = null
-    private var myAccessFile: File? = null
-    private var myPasswordFile: File? = null
+    @Volatile internal var runSession = ResinRunSession()
+        private set
+
+    @Synchronized
+    internal fun beginRunSession() {
+        if (runSession.hasLiveProcess) throw ExecutionException(ResinBundle.message("run.session.active"))
+        runSession.close()
+        runSession = ResinRunSession()
+    }
 
     override fun getEditor(): SettingsEditor<CommonModel> = RunConfigurationEditor()
 
@@ -35,10 +40,13 @@ class ResinModel : ResinModelBase<ResinModel.ResinLocalModelData>(), JmxRemoteAw
 
     @Throws(ExecutionException::class)
     fun getOrCreateResinConfiguration(forceCreation: Boolean): ResinConfiguration {
-        if (myConfiguration == null || forceCreation) {
-            myConfiguration = ResinConfiguration(this)
+        check(!runSession.isClosed) { "Resin run session is closed" }
+        if (runSession.configuration == null || forceCreation) {
+            val configuration = ResinConfiguration(this)
+            runSession.configuration?.close()
+            runSession.configuration = configuration
         }
-        return myConfiguration!!
+        return requireNotNull(runSession.configuration)
     }
 
     @Throws(RuntimeConfigurationException::class)
@@ -120,36 +128,23 @@ class ResinModel : ResinModelBase<ResinModel.ResinLocalModelData>(), JmxRemoteAw
 
     override fun createResinModelData(): ResinLocalModelData = ResinLocalModelData()
 
-    private fun getWebAppFileDestination(webAppFile: File): File? {
-        val installation: ResinInstallation? = installation
-        LOG.assertTrue(installation != null)
-        if (installation == null) {
-            return null
-        }
-
-        val webAppsDir = File(installation.getResinHome(), "webapps") // TODO: take from config
-        if (!webAppsDir.exists()) {
-            LOG.error("Can't find webapps folder")
-            return null
-        }
-
-        return File(webAppsDir, webAppFile.name)
+    override fun validateTransferSource(webAppFile: File): Boolean = localTransfer {
+        JmxDeploymentClient.localTransport(this)?.accepts(webAppFile) == true
     }
 
-    override fun transferFile(webAppFile: File): Boolean {
-        val webAppFileDestination = getWebAppFileDestination(webAppFile) ?: return false
-        return try {
-            FileUtil.copyFileOrDir(webAppFile, webAppFileDestination)
-            true
-        } catch (e: IOException) {
-            LOG.error(e)
-            false
-        }
+    override fun transferFile(webAppFile: File): Boolean = localTransfer {
+        JmxDeploymentClient.localTransport(this)?.transfer(webAppFile) == true
     }
 
-    override fun deleteFile(webAppFile: File): Boolean {
-        val webAppFileDestination = getWebAppFileDestination(webAppFile) ?: return false
-        return FileUtil.delete(webAppFileDestination)
+    override fun deleteFile(webAppFile: File): Boolean = localTransfer {
+        JmxDeploymentClient.localTransport(this)?.delete(webAppFile) == true
+    }
+
+    private fun localTransfer(action: () -> Boolean): Boolean = try {
+        action()
+    } catch (failure: IOException) {
+        LOG.warn("Resin local artifact transfer failed", failure)
+        false
     }
 
     override fun createAdditionalDeploymentSettingsEditor(
@@ -159,16 +154,16 @@ class ResinModel : ResinModelBase<ResinModel.ResinLocalModelData>(), JmxRemoteAw
         return DeploymentSettingsEditor(commonModel, source)
     }
 
-    override fun getJmxUsername(): String? = myJmxUsername
+    override fun getJmxUsername(): String? = runSession.username
 
     override fun setJmxUsername(jmxUsername: String?) {
-        myJmxUsername = jmxUsername
+        runSession.username = jmxUsername
     }
 
-    override fun getJmxPassword(): String? = myJmxPassword
+    override fun getJmxPassword(): String? = runSession.password
 
     override fun setJmxPassword(jmxPassword: String?) {
-        myJmxPassword = jmxPassword
+        runSession.password = jmxPassword
     }
 
     override fun getSystemBaseDirectoryManager(): SystemBaseDirectoryManager {
@@ -181,16 +176,16 @@ class ResinModel : ResinModelBase<ResinModel.ResinLocalModelData>(), JmxRemoteAw
         data.setBaseDirectoryName(baseDirectoryName)
     }
 
-    fun getAccessFile(): File? = myAccessFile
+    fun getAccessFile(): File? = runSession.accessFile
 
     fun setAccessFile(accessFile: File?) {
-        myAccessFile = accessFile
+        runSession.accessFile = accessFile
     }
 
-    fun getPasswordFile(): File? = myPasswordFile
+    fun getPasswordFile(): File? = runSession.passwordFile
 
     fun setPasswordFile(passwordFile: File?) {
-        myPasswordFile = passwordFile
+        runSession.passwordFile = passwordFile
     }
 
     class ResinLocalModelData : ResinModelDataBase() {

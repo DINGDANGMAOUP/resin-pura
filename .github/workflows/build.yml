@@ -166,8 +166,23 @@ jobs:
       - name: Fetch Sources
         uses: actions/checkout@v7
 
+      - name: Check for published version
+        id: published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v${{ needs.metadata.outputs.version }}
+        run: |
+          published_tags="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.draft == false) | .tag_name')"
+          if grep -Fxq -- "$RELEASE_TAG" <<< "$published_tags"; then
+            echo "create_draft=false" >> "$GITHUB_OUTPUT"
+            echo "$RELEASE_TAG is already published; skipping draft creation"
+          else
+            echo "create_draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Remove old release drafts by using the curl request for the available releases with a draft flag
       - name: Remove Old Release Drafts
+        if: steps.published.outputs.create_draft == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -177,6 +192,7 @@ jobs:
 
       # Create a new release draft which is not publicly visible and requires manual acceptance
       - name: Create Release Draft
+        if: steps.published.outputs.create_draft == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ needs.metadata.outputs.changelog }}

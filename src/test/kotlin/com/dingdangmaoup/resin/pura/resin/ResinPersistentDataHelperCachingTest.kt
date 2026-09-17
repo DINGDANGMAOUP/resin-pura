@@ -96,6 +96,19 @@ class ResinPersistentDataHelperCachingTest {
         assertEquals(secondHome.canonicalFile, model.installation?.getResinHome()?.canonicalFile)
     }
 
+    @Test
+    fun `replacing version metadata at the same path invalidates installation cache`() {
+        val home = createResinHome("replace-in-place")
+        val data = ResinPersistentData().apply { RESIN_HOME = home.path }
+        val helper = ResinPersistentDataHelper(applicationServer { data })
+        val unknown = requireNotNull(helper.getInstallationOrError())
+        assertEquals("unknown", unknown.getVersion().getVersionNumber())
+        File(home, "lib/jsdk23.jar").createNewFile()
+        val detected = requireNotNull(helper.getInstallationOrError())
+        assertNotSame(unknown, detected)
+        assertEquals("2.x", detected.getVersion().getVersionNumber())
+    }
+
     private fun createResinHome(name: String): File {
         val home = temporaryFolder.newFolder(name)
         check(File(home, "bin").mkdir())

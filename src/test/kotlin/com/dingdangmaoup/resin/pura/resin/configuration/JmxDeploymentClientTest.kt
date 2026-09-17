@@ -1,6 +1,7 @@
 package com.dingdangmaoup.resin.pura.resin.configuration
 
 import com.dingdangmaoup.resin.pura.ResinModel
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxDeploymentClient
 import com.dingdangmaoup.resin.pura.ResinModelBase
 import com.dingdangmaoup.resin.pura.ResinModelDataBase
 import com.dingdangmaoup.resin.pura.resin.ResinInstallation
@@ -26,7 +27,7 @@ import javax.management.InstanceNotFoundException
 import javax.management.MBeanServerConnection
 import javax.management.ObjectName
 
-class Resin3XConfigurationStrategyTest {
+class JmxDeploymentClientTest {
     @Test
     fun `deploy reports failure when remote cleanup fails`() {
         withFixture { strategy, resinModel, webApp ->
@@ -61,7 +62,7 @@ class Resin3XConfigurationStrategyTest {
         )
 
         for (archiveKey in archiveKeys) {
-            val objectName = Resin3XConfigurationStrategy.createWebAppObjectName(archiveKey)
+            val objectName = JmxDeploymentClient.createWebAppObjectName(archiveKey)
             val property = objectName.getKeyProperty("name")
             val decodedProperty = if (property.startsWith('"')) ObjectName.unquote(property) else property
 
@@ -75,21 +76,21 @@ class Resin3XConfigurationStrategyTest {
 
     @Test
     fun `root archive maps to the root web app mbean`() {
-        val objectName = Resin3XConfigurationStrategy.createWebAppObjectName("ROOT")
+        val objectName = JmxDeploymentClient.createWebAppObjectName("ROOT")
 
         assertFalse(objectName.isPattern)
         assertEquals("/", objectName.getKeyProperty("name"))
-        assertEquals("/", Resin3XConfigurationStrategy.createWebAppObjectName("root").getKeyProperty("name"))
-        assertEquals("/", Resin3XConfigurationStrategy.createWebAppObjectName("Root").getKeyProperty("name"))
+        assertEquals("/", JmxDeploymentClient.createWebAppObjectName("root").getKeyProperty("name"))
+        assertEquals("/", JmxDeploymentClient.createWebAppObjectName("Root").getKeyProperty("name"))
     }
 
     @Test
     fun `line breaks are rejected because Resin cannot register a matching object name`() {
         assertThrows(IllegalArgumentException::class.java) {
-            Resin3XConfigurationStrategy.createWebAppObjectName("bad\nname")
+            JmxDeploymentClient.createWebAppObjectName("bad\nname")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            Resin3XConfigurationStrategy.createWebAppObjectName("bad\rname")
+            JmxDeploymentClient.createWebAppObjectName("bad\rname")
         }
     }
 
@@ -102,18 +103,18 @@ class Resin3XConfigurationStrategyTest {
             }
         }
 
-        assertTrue(Resin3XConfigurationStrategy.invokeArchiveCommand(connection, "start", "sample"))
+        assertTrue(JmxDeploymentClient.invokeArchiveCommand(connection, "start", "sample"))
         assertEquals(
             listOf(
                 MBeanCall.Invoke(
-                    Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                    JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                     "update",
                     emptyList(),
                     emptyList(),
                 ),
-                MBeanCall.GetAttribute(Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY, "Names"),
+                MBeanCall.GetAttribute(JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY, "Names"),
                 MBeanCall.Invoke(
-                    Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                    JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                     "start",
                     listOf("sample"),
                     listOf(String::class.java.name),
@@ -138,17 +139,17 @@ class Resin3XConfigurationStrategyTest {
             }
         }
 
-        assertFalse(Resin3XConfigurationStrategy.invokeArchiveCommand(startConnection, "start", "missing"))
-        assertTrue(Resin3XConfigurationStrategy.invokeArchiveCommand(undeployConnection, "undeploy", "missing"))
+        assertFalse(JmxDeploymentClient.invokeArchiveCommand(startConnection, "start", "missing"))
+        assertTrue(JmxDeploymentClient.invokeArchiveCommand(undeployConnection, "undeploy", "missing"))
 
         val expectedLookup = listOf(
             MBeanCall.Invoke(
-                Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                 "update",
                 emptyList(),
                 emptyList(),
             ),
-            MBeanCall.GetAttribute(Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY, "Names"),
+            MBeanCall.GetAttribute(JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY, "Names"),
         )
         assertEquals(expectedLookup, startCalls)
         assertEquals(expectedLookup, undeployCalls)
@@ -165,19 +166,19 @@ class Resin3XConfigurationStrategyTest {
         }
 
         val thrown = assertThrows(IOException::class.java) {
-            Resin3XConfigurationStrategy.invokeArchiveCommand(connection, "undeploy", "sample")
+            JmxDeploymentClient.invokeArchiveCommand(connection, "undeploy", "sample")
         }
 
         assertSame(failure, thrown)
         assertEquals(
             listOf(
                 MBeanCall.Invoke(
-                    Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                    JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                     "update",
                     emptyList(),
                     emptyList(),
                 ),
-                MBeanCall.GetAttribute(Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY, "Names"),
+                MBeanCall.GetAttribute(JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY, "Names"),
             ),
             calls,
         )
@@ -197,21 +198,21 @@ class Resin3XConfigurationStrategyTest {
         }
 
         val thrown = assertThrows(IOException::class.java) {
-            Resin3XConfigurationStrategy.invokeArchiveCommand(connection, "start", "sample")
+            JmxDeploymentClient.invokeArchiveCommand(connection, "start", "sample")
         }
 
         assertSame(failure, thrown)
         assertEquals(
             listOf(
                 MBeanCall.Invoke(
-                    Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                    JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                     "update",
                     emptyList(),
                     emptyList(),
                 ),
-                MBeanCall.GetAttribute(Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY, "Names"),
+                MBeanCall.GetAttribute(JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY, "Names"),
                 MBeanCall.Invoke(
-                    Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                    JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                     "start",
                     listOf("sample"),
                     listOf(String::class.java.name),
@@ -230,10 +231,10 @@ class Resin3XConfigurationStrategyTest {
             }
         }
 
-        assertTrue(Resin3XConfigurationStrategy.invokeArchiveCommand(connection, "start", "root"))
+        assertTrue(JmxDeploymentClient.invokeArchiveCommand(connection, "start", "root"))
         assertEquals(
             MBeanCall.Invoke(
-                Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY,
+                JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY,
                 "start",
                 listOf("root"),
                 listOf(String::class.java.name),
@@ -244,7 +245,7 @@ class Resin3XConfigurationStrategyTest {
 
     @Test
     fun `state lookup distinguishes a missing web app from a transport failure`() {
-        val objectName = Resin3XConfigurationStrategy.createWebAppObjectName("sample")
+        val objectName = JmxDeploymentClient.createWebAppObjectName("sample")
         val (foundConnection, foundCalls) = recordingConnection { call ->
             when (call) {
                 is MBeanCall.GetAttribute -> "active"
@@ -266,19 +267,19 @@ class Resin3XConfigurationStrategyTest {
         }
 
         assertEquals(
-            Resin3XConfigurationStrategy.WebAppStateResult.Found("active"),
-            Resin3XConfigurationStrategy.readWebAppState(foundConnection, objectName),
+            JmxDeploymentClient.WebAppStateResult.Found("active"),
+            JmxDeploymentClient.readWebAppState(foundConnection, objectName),
         )
         assertSame(
-            Resin3XConfigurationStrategy.WebAppStateResult.Missing,
-            Resin3XConfigurationStrategy.readWebAppState(missingConnection, objectName),
+            JmxDeploymentClient.WebAppStateResult.Missing,
+            JmxDeploymentClient.readWebAppState(missingConnection, objectName),
         )
         val thrown = assertThrows(IOException::class.java) {
-            Resin3XConfigurationStrategy.readWebAppState(failedConnection, objectName)
+            JmxDeploymentClient.readWebAppState(failedConnection, objectName)
         }
         assertSame(transportFailure, thrown)
 
-        val expectedCall = listOf(MBeanCall.GetAttribute(objectName, Resin3XConfigurationStrategy.STATE_JMX_ATTRIBUTE))
+        val expectedCall = listOf(MBeanCall.GetAttribute(objectName, JmxDeploymentClient.STATE_JMX_ATTRIBUTE))
         assertEquals(expectedCall, foundCalls)
         assertEquals(expectedCall, missingCalls)
         assertEquals(expectedCall, failedCalls)
@@ -292,7 +293,7 @@ class Resin3XConfigurationStrategyTest {
                 val events = mutableListOf<String>()
                 val strategy = TransferFailingStrategy(installation, events)
                 val resinModel = TransferFailingModel(events)
-                val webApp = WebApp(false, "/test", "default", webAppFile.absolutePath, null)
+                val webApp = WebApp(true, "/test", "default", webAppFile.absolutePath, null)
 
                 assertFalse(strategy.deployWithJmx(resinModel, webApp))
                 assertEquals(listOf("state", "cleanup", "transfer"), events)
@@ -307,11 +308,40 @@ class Resin3XConfigurationStrategyTest {
         withStrategy { strategy ->
             assertEquals("sample.application", strategy.getArchiveKey(File("sample.application.war")))
             assertEquals("ROOT", strategy.getArchiveKey(File("ROOT.war")))
-            assertTrue(Resin3XConfigurationStrategy.createWebAppObjectName("sample.application").isPropertyValuePattern.not())
+            assertTrue(JmxDeploymentClient.createWebAppObjectName("sample.application").isPropertyValuePattern.not())
         }
     }
 
-    private fun withFixture(test: (CleanupFailingStrategy, ResinModel, WebApp) -> Unit) {
+    @Test fun `missing exploded directory cleanup preserves its full dotted name`() {
+        withStrategy { strategy ->
+            val events = mutableListOf<String>()
+            assertTrue(strategy.cleanUpWebApp(TransferFailingModel(events, true), File("missing.application")))
+            assertEquals(listOf("delete:missing.application"), events)
+        }
+    }
+
+    @Test fun `local transfer uses archive deployer paths and expansion naming`() {
+        val root = Files.createTempDirectory("resin-path-contract").toFile()
+        try {
+            val archive = File(root, "archive").apply { mkdir() }
+            val expand = File(root, "expand").apply { mkdir() }
+            val attributes = mapOf("ArchiveDirectory" to archive.path, "ExpandDirectory" to expand.path,
+                "ExpandPrefix" to "prefix-", "ExpandSuffix" to "-suffix")
+            val (connection, calls) = recordingConnection { call ->
+                assertTrue(call is MBeanCall.GetAttribute)
+                attributes[(call as MBeanCall.GetAttribute).attribute]
+            }
+            val transport = JmxDeploymentClient.readLocalTransport(connection)
+            val source = File(root, "app").apply { mkdir(); resolve("index.html").writeText("app") }
+            assertTrue(transport.transfer(source))
+            assertEquals("app", expand.resolve("prefix-app-suffix/index.html").readText())
+            assertTrue(calls.all { (it as MBeanCall.GetAttribute).objectName == JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun withFixture(test: (CleanupFailingStrategy, ResinModelBase<*>, WebApp) -> Unit) {
         val resinHome = Files.createTempDirectory("resin-home").toFile()
         val webAppFile = Files.createTempFile("resin-webapp", ".war").toFile()
         try {
@@ -319,18 +349,18 @@ class Resin3XConfigurationStrategyTest {
             File(resinHome, "lib").mkdir()
             val installation = ResinInstallation.create(resinHome.absolutePath)
             val strategy = CleanupFailingStrategy(installation)
-            val webApp = WebApp(false, "/test", "default", webAppFile.absolutePath, null)
+            val webApp = WebApp(true, "/test", "default", webAppFile.absolutePath, null)
 
-            test(strategy, ResinModel(), webApp)
+            test(strategy, TransferFailingModel(mutableListOf()), webApp)
         } finally {
             webAppFile.delete()
             resinHome.deleteRecursively()
         }
     }
 
-    private fun withStrategy(test: (Resin3XConfigurationStrategy) -> Unit) {
+    private fun withStrategy(test: (JmxDeploymentClient) -> Unit) {
         withInstallation { installation ->
-            test(Resin3XConfigurationStrategy(installation))
+            test(JmxDeploymentClient(installation))
         }
     }
 
@@ -346,7 +376,7 @@ class Resin3XConfigurationStrategyTest {
     }
 
     private class CleanupFailingStrategy(installation: ResinInstallation) :
-        Resin3XConfigurationStrategy(installation) {
+        JmxDeploymentClient(installation) {
         var cleanupAttempts = 0
             private set
         var undeployAttempts = 0
@@ -372,7 +402,7 @@ class Resin3XConfigurationStrategyTest {
     private class TransferFailingStrategy(
         installation: ResinInstallation,
         private val events: MutableList<String>,
-    ) : Resin3XConfigurationStrategy(installation) {
+    ) : JmxDeploymentClient(installation) {
         override fun getDeployStateWithJmx(
             resinModel: ResinModelBase<*>,
             webApp: WebApp,
@@ -388,7 +418,7 @@ class Resin3XConfigurationStrategyTest {
         }
     }
 
-    private class TransferFailingModel(private val events: MutableList<String>) :
+    private class TransferFailingModel(private val events: MutableList<String>, private val recordDeletes: Boolean = false) :
         ResinModelBase<ResinModelDataBase>() {
         override fun createResinModelData(): ResinModelDataBase = ResinModelDataBase()
 
@@ -397,8 +427,11 @@ class Resin3XConfigurationStrategyTest {
             return false
         }
 
-        override fun deleteFile(webAppFile: File): Boolean =
-            throw AssertionError("Cleanup is controlled by the strategy fixture")
+        override fun deleteFile(webAppFile: File): Boolean {
+            if (!recordDeletes) throw AssertionError("Cleanup is controlled by the strategy fixture")
+            events += "delete:${webAppFile.name}"
+            return true
+        }
 
         override fun createAdditionalDeploymentSettingsEditor(
             commonModel: CommonModel,

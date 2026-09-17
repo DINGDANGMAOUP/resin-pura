@@ -27,6 +27,15 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Require release commit on main
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          release_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          if ! git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main; then
+            echo "::error::Release commit $release_commit has not been merged into main"
+            exit 1
+          fi
       - name: Setup Build Toolchain
         uses: ./.github/actions/setup-gradle-java
       - name: Export Properties

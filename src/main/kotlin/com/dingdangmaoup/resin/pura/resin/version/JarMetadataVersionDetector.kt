@@ -9,12 +9,9 @@ import java.util.jar.JarFile
 
 /**
  * Detects Resin capabilities from JAR metadata and bytecode structure without loading Resin classes into the IDE process.
- *
- * The historical name is retained because this object is used as the detector entry point, but no
- * class loading or reflective calls are performed here.
  */
-object ClassCallDetector {
-    private val LOG = Logger.getInstance(ClassCallDetector::class.java)
+object JarMetadataVersionDetector {
+    private val LOG = Logger.getInstance(JarMetadataVersionDetector::class.java)
     private const val RESIN_VERSION_CLASS_NAME = "com/caucho/Version"
     private const val RESIN_VERSION_CLASS = "$RESIN_VERSION_CLASS_NAME.class"
     private const val RESIN_XDEBUG_CLASS = "com/caucho/log/LogManagerImpl.class"

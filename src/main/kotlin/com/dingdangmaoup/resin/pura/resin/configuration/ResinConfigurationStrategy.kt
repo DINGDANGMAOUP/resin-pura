@@ -8,7 +8,7 @@ import org.jdom.Element
 import java.io.File
 import java.io.InputStream
 
-abstract class ResinConfigurationStrategy {
+abstract class ResinConfigurationStrategy : AutoCloseable {
     private lateinit var myElement: Element
     private var mySourceConfig: File? = null
 
@@ -29,6 +29,8 @@ abstract class ResinConfigurationStrategy {
 
     @Throws(ExecutionException::class)
     open fun save() {}
+
+    override fun close() {}
 
     abstract fun setPort(port: Int)
 

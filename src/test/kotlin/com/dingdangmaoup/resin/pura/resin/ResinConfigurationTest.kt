@@ -8,13 +8,23 @@ import org.junit.Test
 
 class ResinConfigurationTest {
     @Test
+    fun `missing javac does not force an obsolete language level`() {
+        val root = Element("resin")
+        ResinConfiguration.patchConfigToMakeDebuggerWork(root)
+        assertEquals("-g", root.getChild("javac").getAttributeValue("args"))
+        root.getChild("javac").setAttribute("args", "-source 1.5")
+        ResinConfiguration.patchConfigToMakeDebuggerWork(root)
+        assertEquals("-g -source 1.5", root.getChild("javac").getAttributeValue("args"))
+    }
+
+    @Test
     fun `debug patch creates missing javac args`() {
         val root = Element("resin")
         root.addContent(Element("javac").setAttribute("compiler", "internal"))
 
         ResinConfiguration.patchConfigToMakeDebuggerWork(root)
 
-        assertEquals("-g -source 1.5", root.getChild("javac").getAttributeValue("args"))
+        assertEquals("-g", root.getChild("javac").getAttributeValue("args"))
     }
 
     @Test

@@ -52,6 +52,10 @@ open class ResinXmlConfigurationStrategy(resinInstallation: ResinInstallation) :
         }
     }
 
+    override fun close() {
+        myImports.forEach { it.close() }
+    }
+
     companion object {
         const val IMPORT_SINGLE_PATH_ATTRIBUTE = "path"
         private val IMPORT_ATTRIBUTE_NAMES = arrayOf(IMPORT_SINGLE_PATH_ATTRIBUTE, "fileset")

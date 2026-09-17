@@ -5,40 +5,29 @@ import com.intellij.util.PathUtil
 
 class WebApp(
     private val myDefaultContextPath: Boolean,
-    private var myContextPath: String?,
-    private var myHost: String?,
-    private var myLocation: String?,
-    private var myCharset: String?,
+    private val myContextPath: String?,
+    private val myHost: String?,
+    private val myLocation: String?,
+    private val myCharset: String?,
 ) {
     fun getLocation(): String? = myLocation
 
-    fun setLocation(location: String?) {
-        myLocation = location
-    }
-
     fun getContextPath(): String {
         return if (myDefaultContextPath) {
-            "/" + FileUtilRt.getNameWithoutExtension(PathUtil.getFileName(myLocation ?: ""))
+            val name = FileUtilRt.getNameWithoutExtension(PathUtil.getFileName(myLocation ?: ""))
+            if (name.equals("ROOT", ignoreCase = true)) "/" else "/$name"
         } else {
             myContextPath ?: ""
         }
     }
 
-    fun setContextPath(contextPath: String?) {
-        myContextPath = contextPath
-    }
-
     fun getHost(): String = myHost ?: ""
-
-    fun setHost(host: String?) {
-        myHost = host
-    }
 
     fun getCharSet(): String? = myCharset
 
-    fun setCharSet(charset: String?) {
-        myCharset = charset
-    }
+    fun target(): DeploymentTarget = DeploymentTarget(getHost(), getContextPath())
+
+    fun usesDefaultContext(): Boolean = myDefaultContextPath
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -29,6 +29,7 @@ import java.nio.charset.Charset
 import java.text.MessageFormat
 import java.util.ArrayList
 import java.util.Properties
+import com.dingdangmaoup.resin.pura.resin.ResinRunSession
 
 class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     private var resinRunProps: Properties? = null
@@ -36,6 +37,17 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     @Throws(ExecutionException::class)
     override fun createCommandLine(commonModel: CommonModel): JavaParameters {
         val resinModel = commonModel.serverModel as ResinModel
+        resinModel.beginRunSession()
+        val session = resinModel.runSession
+        return try {
+            prepareCommandLine(commonModel, resinModel)
+        } catch (failure: Throwable) {
+            session.close()
+            throw failure
+        }
+    }
+
+    private fun prepareCommandLine(commonModel: CommonModel, resinModel: ResinModel): JavaParameters {
         val prepareResult: JmxRemotePrepareResult?
 
         if (resinModel.hasJmxStrategy()) {
@@ -58,9 +70,9 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
         val homePath = FileUtil.toSystemDependentName(installation.getResinHome().path)
 
         val parameters = if (prepareResult == null) {
-            JavaParameters()
+            SessionJavaParameters(resinModel.runSession)
         } else {
-            SecureJmxJavaParameters(resinModel.jmxPort, prepareResult)
+            SecureJmxJavaParameters(resinModel.jmxPort, prepareResult, resinModel.runSession)
         }
         val charset = resinModel.charset
         if (charset.isNotEmpty()) {
@@ -74,6 +86,7 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
         val resinVersion: ResinVersion = resinConfiguration.getInstallation().getVersion()
         parameters.workingDirectory = homePath
         parameters.mainClass = resinVersion.getStartupClass()
+            ?: throw ExecutionException(ResinBundle.message("run.resin.version.unknown"))
 
         if (resinModel.hasJmxStrategy()) {
             loadResinRunProp(JMX_VM_PARAMS_PROP, parameters, resinModel.jmxPort.toString())
@@ -348,13 +361,46 @@ class ResinStartupPolicy : JavaCommandLineStartupPolicy {
     internal class SecureJmxJavaParameters(
         private val jmxPort: Int,
         private val prepareResult: JmxRemotePrepareResult,
-    ) : JavaParameters() {
-        override fun toCommandLine(): GeneralCommandLine {
+        session: ResinRunSession? = null,
+    ) : SessionJavaParameters(session) {
+        override fun beforeCommandLine() {
             // JavaCommandLineLocalState appends common VM options and run extensions after
             // the startup policy returns. Re-apply the invariant at the final conversion
             // boundary so no later duplicate can weaken authentication or loopback binding.
             enforceJmxSecurity(vmParametersList, programParametersList, jmxPort, prepareResult)
-            return super.toCommandLine()
+        }
+    }
+
+    internal open class SessionJavaParameters(private val session: ResinRunSession?) : JavaParameters() {
+        protected open fun beforeCommandLine() {}
+
+        override fun toCommandLine(): GeneralCommandLine = try {
+            beforeCommandLine()
+            val command = super.toCommandLine()
+            if (session == null) command else SessionCommandLine(command, session)
+        } catch (failure: Throwable) {
+            session?.close()
+            throw failure
+        }
+    }
+
+    internal class SessionCommandLine(command: GeneralCommandLine, private val session: ResinRunSession) : GeneralCommandLine(command) {
+        init {
+            // Validate before handing the command to the platform. The public createProcess()
+            // is non-extendable; its protected ProcessBuilder hook owns OS launch failures.
+            try {
+                toProcessBuilder()
+            } catch (failure: Throwable) {
+                session.close()
+                throw failure
+            }
+        }
+
+        override fun createProcess(processBuilder: ProcessBuilder): Process = try {
+            super.createProcess(processBuilder).also(session::own)
+        } catch (failure: Throwable) {
+            session.close()
+            throw failure
         }
     }
 }

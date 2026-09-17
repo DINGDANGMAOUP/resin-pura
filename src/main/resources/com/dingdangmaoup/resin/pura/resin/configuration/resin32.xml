@@ -64,7 +64,7 @@
   <!--
      - You can change the compiler to "javac", "eclipse" or "internal".
     -->
-  <javac compiler="internal" args="-source 1.5"/>
+  <javac compiler="internal" args="-g"/>
 
   <cluster id="app-tier">
     <!-- sets the content root for the cluster, relative to resin.root -->

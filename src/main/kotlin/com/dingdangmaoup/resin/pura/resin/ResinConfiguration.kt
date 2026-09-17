@@ -15,11 +15,12 @@ import org.jdom.JDOMException
 import java.io.File
 import java.io.IOException
 
-class ResinConfiguration(serverModel: ResinModel) {
+class ResinConfiguration(serverModel: ResinModel) : AutoCloseable {
     private val myInstallation: ResinInstallation
-    private val myGeneratedConfig: ResinGeneratedConfig?
+    private var myGeneratedConfig: ResinGeneratedConfig? = null
     private val mySourceConfig: File
     private val myStrategy: ResinConfigurationStrategy
+    private var closed = false
 
     init {
         val helper = serverModel.helper
@@ -34,43 +35,48 @@ class ResinConfiguration(serverModel: ResinModel) {
 
         myStrategy = ResinConfigurationStrategy.getForInstallation(myInstallation)
 
-        if (serverModel.isReadOnlyConfiguration()) {
-            myGeneratedConfig = null
-        } else {
-            try {
-                val usesBundledTemplate = mySourceConfig.length() == 0L
-                val document: Element = if (usesBundledTemplate) {
-                    val stream = myStrategy.getDefaultResinConfContent()
-                        ?: throw ExecutionException(ResinBundle.message("run.resin.conf.doesnt.exist"))
-                    stream.use(JDOMUtil::load)
-                } else {
-                    JDOMUtil.load(mySourceConfig)
+        try {
+            if (serverModel.isReadOnlyConfiguration()) {
+                myGeneratedConfig = null
+            } else {
+                try {
+                    val usesBundledTemplate = mySourceConfig.length() == 0L
+                    val document: Element = if (usesBundledTemplate) {
+                        val stream = myStrategy.getDefaultResinConfContent()
+                            ?: throw ExecutionException(ResinBundle.message("run.resin.conf.doesnt.exist"))
+                        stream.use(JDOMUtil::load)
+                    } else {
+                        JDOMUtil.load(mySourceConfig)
+                    }
+
+                    myGeneratedConfig = ResinGeneratedConfig(document, "resin")
+                    patchConfigToMakeDebuggerWork(document)
+                    val configOrigin = if (usesBundledTemplate) {
+                        File(File(myInstallation.getResinHome(), "conf"), mySourceConfig.name)
+                    } else {
+                        mySourceConfig
+                    }
+                    myStrategy.init(serverModel, document, configOrigin)
+                    myStrategy.setPort(serverModel.port)
+                } catch (e: JDOMException) {
+                    throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"), e)
+                } catch (e: IOException) {
+                    throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"), e)
                 }
 
-                myGeneratedConfig = ResinGeneratedConfig(document, "resin")
-                patchConfigToMakeDebuggerWork(document)
-                val configOrigin = if (usesBundledTemplate) {
-                    File(File(myInstallation.getResinHome(), "conf"), mySourceConfig.name)
-                } else {
-                    mySourceConfig
-                }
-                myStrategy.init(serverModel, document, configOrigin)
-                myStrategy.setPort(serverModel.port)
-            } catch (e: JDOMException) {
-                throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"), e)
-            } catch (e: IOException) {
-                throw ExecutionException(ResinBundle.message("run.resin.conf.load.error"), e)
-            }
-
-            for (model: DeploymentModel in serverModel.getCommonModel().deploymentModels) {
-                if (model.deploymentMethod == ResinDeploymentProvider.CONF_DEPLOYMENT_METHOD) {
-                    val webApp = ResinDeploymentProvider.getWebApp(model)
-                    if (webApp != null) {
-                        myStrategy.deploy(webApp)
+                for (model: DeploymentModel in serverModel.getCommonModel().deploymentModels) {
+                    if (model.deploymentMethod == ResinDeploymentProvider.CONF_DEPLOYMENT_METHOD) {
+                        val webApp = ResinDeploymentProvider.getWebApp(model)
+                        if (webApp != null) {
+                            myStrategy.deploy(webApp)
+                        }
                     }
                 }
+                save()
             }
-            save()
+        } catch (failure: Throwable) {
+            close()
+            throw failure
         }
     }
 
@@ -78,23 +84,27 @@ class ResinConfiguration(serverModel: ResinModel) {
 
     fun getInstallation(): ResinInstallation = myInstallation
 
-    private fun isWritable(): Boolean = myGeneratedConfig != null
+    private fun isWritable(): Boolean = myGeneratedConfig != null && !closed
 
     fun getConfigFile(): File = if (isWritable()) myGeneratedConfig!!.getFile() else mySourceConfig
 
     @Throws(ExecutionException::class)
+    @Synchronized
     fun deploy(webApp: WebApp) {
-        if (!isWritable()) return
+        if (!isWritable()) throw ExecutionException(ResinBundle.message("deployment.config.read.only"))
+        val location = webApp.getLocation()
+        if (location == null || !File(location).exists()) throw ExecutionException(ResinBundle.message("deployment.source.missing"))
         myStrategy.deploy(webApp)
         save()
     }
 
     @Throws(ExecutionException::class)
+    @Synchronized
     fun undeploy(webApp: WebApp): Boolean {
-        if (!isWritable()) return false
-        val result = myStrategy.undeploy(webApp)
+        if (!isWritable()) throw ExecutionException(ResinBundle.message("deployment.config.read.only"))
+        myStrategy.undeploy(webApp)
         save()
-        return result
+        return true
     }
 
     @Throws(ExecutionException::class)
@@ -103,12 +113,20 @@ class ResinConfiguration(serverModel: ResinModel) {
         myStrategy.save()
     }
 
+    @Synchronized
+    override fun close() {
+        if (closed) return
+        closed = true
+        myGeneratedConfig?.close()
+        myStrategy.close()
+    }
+
     companion object {
         private const val JAVAC_ELEMENT = "javac"
         private const val ARGS_ATTRIBUTE = "args"
         private const val COMPILER_ATTRIBUTE = "compiler"
         private const val COMPILER_ATTRIBUTE_VALUE = "internal"
-        private const val ARGS_ATTRIBUTE_VALUE = "-source 1.5"
+        private const val ARGS_ATTRIBUTE_VALUE = ""
         private const val DEBUG_OPTION = "-g"
         private val DEBUG_OPTION_PATTERN = Regex("""(?<!\S)-g(?::[^\s]+)?(?=\s|$)""")
 

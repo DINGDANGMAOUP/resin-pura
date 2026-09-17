@@ -1,7 +1,9 @@
 package com.dingdangmaoup.resin.pura
 
-import com.dingdangmaoup.resin.pura.resin.ResinConfiguration
 import com.dingdangmaoup.resin.pura.resin.WebApp
+import com.dingdangmaoup.resin.pura.resin.DeploymentObservation
+import com.dingdangmaoup.resin.pura.resin.DeploymentWait
+import com.dingdangmaoup.resin.pura.resin.DeploymentOperation
 import com.dingdangmaoup.resin.pura.resin.common.DeploymentProviderEx
 import com.dingdangmaoup.resin.pura.resin.configuration.JmxConfigurationStrategy
 import com.intellij.execution.ExecutionException
@@ -21,7 +23,8 @@ import com.intellij.packaging.artifacts.ArtifactType
 
 class ResinDeploymentProvider : DeploymentProviderEx() {
     override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
-        getDeploymentMethod(deploymentModel).doDeploy(project, instance, deploymentModel)
+        val operation = beginOperation(instance, deploymentModel, false)
+        getDeploymentMethod(deploymentModel).doDeploy(project, instance, deploymentModel, operation)
     }
 
     override fun createNewDeploymentModel(commonModel: CommonModel, source: DeploymentSource): DeploymentModel {
@@ -44,10 +47,22 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
     }
 
     override fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
-        getDeploymentMethod(deploymentModel).startUndeploy(instance, deploymentModel)
+        val operation = beginOperation(instance, deploymentModel, true)
+        getDeploymentMethod(deploymentModel).startUndeploy(instance, deploymentModel, operation)
     }
 
     override fun updateDeploymentStatus(j2EEServerInstance: J2EEServerInstance, deploymentModel: DeploymentModel) {
+        if (j2EEServerInstance.isStopped) return
+        val model = deploymentModel.serverModel as ResinModelBase<*>
+        val strategy = model.jmxStrategy ?: return
+        val webApp = getWebApp(deploymentModel) ?: return
+        val operation = (j2EEServerInstance as ResinServerInstance).deploymentOperations[deploymentModel] ?: return
+        val observation = if (deploymentModel.deploymentMethod == CONF_DEPLOYMENT_METHOD) {
+            strategy.observeConfiguration(model, webApp, operation.removing)
+        } else {
+            strategy.observeArchive(model, webApp, operation.removing)
+        }
+        setCurrentStatus(j2EEServerInstance, deploymentModel, operation, observation.status)
     }
 
     override fun getAvailableMethods(): Array<DeploymentMethod> = DEPLOYMENT_METHODS
@@ -59,8 +74,8 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
 
     private abstract class ResinDeploymentMethod(name: String, local: Boolean, remote: Boolean) :
         DeploymentMethod(name, local, remote) {
-        abstract fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel)
-        abstract fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel)
+        abstract fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation)
+        abstract fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation)
     }
 
     companion object {
@@ -73,40 +88,32 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
                     return super.isApplicable(commonModel) && (commonModel.serverModel as ResinModelBase<*>).hasJmxStrategy()
                 }
 
-                override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
+                override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation) {
                     val strategy = getJmxStrategy(deploymentModel)
                     val serverModel = deploymentModel.serverModel as ResinModelBase<*>
                     val webApp = getWebApp(deploymentModel)
                     val success = strategy != null && webApp != null && strategy.deployWithJmx(serverModel, webApp)
                     if (success) {
-                        setDeploymentStatus(instance, deploymentModel, DeploymentStatus.UNKNOWN)
-                        (instance as ResinServerInstance).getPoller().putDeployStateChecker(object : DeployStateChecker {
-                            override fun getDeploymentModel(): DeploymentModel = deploymentModel
-
-                            override fun check(): Boolean {
-                                val isFinal = Ref.create(false)
-                                setDeploymentStatus(
-                                    instance,
-                                    deploymentModel,
-                                    strategy.getDeployStateWithJmx(serverModel, webApp, isFinal),
-                                )
-                                return isFinal.get()
-                            }
-                        })
+                        setCurrentStatus(instance, deploymentModel, operation, DeploymentStatus.UNKNOWN)
+                        observeDeployment(instance, deploymentModel, operation) {
+                            val terminal = Ref.create(false)
+                            DeploymentObservation(strategy.getDeployStateWithJmx(serverModel, webApp, terminal), terminal.get())
+                        }
                     } else {
-                        setDeploymentStatus(instance, deploymentModel, DeploymentStatus.FAILED)
+                        setCurrentStatus(instance, deploymentModel, operation, DeploymentStatus.FAILED)
                     }
                 }
 
-                override fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
+                override fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation) {
                     (instance as ResinServerInstance).getPoller().removeDeployStateChecker(deploymentModel)
                     val strategy = getJmxStrategy(deploymentModel)
                     val webApp = getWebApp(deploymentModel)
                     val success = strategy != null && webApp != null &&
                         strategy.undeployWithJmx(deploymentModel.serverModel as ResinModelBase<*>, webApp)
-                    setDeploymentStatus(
+                    setCurrentStatus(
                         instance,
                         deploymentModel,
+                        operation,
                         if (success) DeploymentStatus.NOT_DEPLOYED else DeploymentStatus.UNKNOWN,
                     )
                 }
@@ -119,27 +126,73 @@ class ResinDeploymentProvider : DeploymentProviderEx() {
         @JvmField
         val CONF_DEPLOYMENT_METHOD: DeploymentMethod =
             object : ResinDeploymentMethod(ResinBundle.message("ResinDeploymentProvider.deploy.method.conf.name"), true, false) {
-                override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
-                    setDeploymentStatus(instance, deploymentModel, DeploymentStatus.DEPLOYED)
+                override fun isApplicable(commonModel: CommonModel): Boolean =
+                    super.isApplicable(commonModel) && (commonModel.serverModel as? ResinModel)?.isReadOnlyConfiguration() == false
+
+                override fun doDeploy(project: Project, instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation) {
+                    changeConfiguration(instance, deploymentModel, operation)
                 }
 
-                override fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel) {
-                    var success = false
-                    try {
-                        val resinModel = deploymentModel.serverModel as ResinModel
-                        val resinConfiguration: ResinConfiguration = resinModel.getOrCreateResinConfiguration(false)
-                        val webApp = getWebApp(deploymentModel)
-                        success = webApp != null && resinConfiguration.undeploy(webApp)
-                    } catch (e: ExecutionException) {
-                        LOG.error(e)
-                    }
-                    setDeploymentStatus(
-                        instance,
-                        deploymentModel,
-                        if (success) DeploymentStatus.NOT_DEPLOYED else DeploymentStatus.UNKNOWN,
-                    )
+                override fun startUndeploy(instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation) {
+                    changeConfiguration(instance, deploymentModel, operation)
                 }
             }
+
+        private fun changeConfiguration(instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation) {
+            val removing = operation.removing
+            (instance as ResinServerInstance).getPoller().removeDeployStateChecker(deploymentModel)
+            try {
+                val model = deploymentModel.serverModel as ResinModel
+                val webApp = getWebApp(deploymentModel)
+                    ?: throw ExecutionException(ResinBundle.message("deployment.source.missing"))
+                val configuration = model.runSession.configuration
+                    ?: throw ExecutionException(ResinBundle.message("deployment.session.missing"))
+                if (removing) configuration.undeploy(webApp) else configuration.deploy(webApp)
+                // A successful XML write is not evidence that Resin has reloaded the application.
+                setCurrentStatus(instance, deploymentModel, operation, DeploymentStatus.UNKNOWN)
+                model.jmxStrategy?.let { strategy ->
+                    observeDeployment(instance, deploymentModel, operation) {
+                        strategy.observeConfiguration(model, webApp, removing)
+                    }
+                }
+            } catch (e: ExecutionException) {
+                LOG.warn("Resin configuration deployment failed", e)
+                setCurrentStatus(instance, deploymentModel, operation, if (removing) DeploymentStatus.UNKNOWN else DeploymentStatus.FAILED)
+            }
+        }
+
+        private fun observeDeployment(
+            instance: J2EEServerInstance, deploymentModel: DeploymentModel, operation: DeploymentOperation,
+            observe: () -> DeploymentObservation,
+        ) {
+            val wait = DeploymentWait()
+            (instance as ResinServerInstance).getPoller().putDeployStateChecker(object : DeployStateChecker {
+                override fun getDeploymentModel(): DeploymentModel = deploymentModel
+                override fun check(): Boolean {
+                    if (instance.isStopped || instance.deploymentOperations[deploymentModel] !== operation) return true
+                    val observation = observe()
+                    setCurrentStatus(instance, deploymentModel, operation, observation.status)
+                    return wait.finish(observation)
+                }
+            })
+        }
+
+        private fun beginOperation(instance: J2EEServerInstance, model: DeploymentModel, removing: Boolean): DeploymentOperation {
+            val server = instance as ResinServerInstance
+            server.getPoller().removeDeployStateChecker(model)
+            return synchronized(server.deploymentOperations) {
+                DeploymentOperation(removing).also { server.deploymentOperations[model] = it }
+            }
+        }
+
+        private fun setCurrentStatus(instance: J2EEServerInstance, model: DeploymentModel, operation: DeploymentOperation, status: DeploymentStatus) {
+            val operations = (instance as ResinServerInstance).deploymentOperations
+            synchronized(operations) {
+                if (operations[model] === operation && !instance.isStopped) {
+                    setDeploymentStatus(instance, model, status)
+                }
+            }
+        }
 
         private val DEFAULT_DEPLOYMENT_METHOD: ResinDeploymentMethod
             get() = JMX_DEPLOYMENT_METHOD as ResinDeploymentMethod

@@ -1,7 +1,6 @@
 package com.dingdangmaoup.resin.pura.resin.jmx
 
 import com.dingdangmaoup.resin.pura.ResinRemoteModel
-import com.dingdangmaoup.resin.pura.resin.configuration.Resin3XConfigurationStrategy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -88,8 +87,8 @@ class ConnectorCommandBaseTest {
         ) { _, method, arguments ->
             when (method.name) {
                 "getAttribute" -> {
-                    assertEquals(Resin3XConfigurationStrategy.MBEAN_WEB_APP_DEPLOY, arguments?.get(0))
-                    assertEquals(Resin3XConfigurationStrategy.STATE_JMX_ATTRIBUTE, arguments?.get(1))
+                    assertEquals(JmxDeploymentClient.MBEAN_WEB_APP_DEPLOY, arguments?.get(0))
+                    assertEquals(JmxDeploymentClient.STATE_JMX_ATTRIBUTE, arguments?.get(1))
                     state
                 }
 
