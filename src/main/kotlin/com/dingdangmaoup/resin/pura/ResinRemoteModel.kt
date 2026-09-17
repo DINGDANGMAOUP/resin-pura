@@ -31,6 +31,10 @@ class ResinRemoteModel() : ResinModelBase<ResinRemoteModel.ResinRemoteModelData>
         myJmxCredentialStore = jmxCredentialStore
     }
 
+    override fun copySnapshotCollaborators(copy: ResinModelBase<*>) {
+        (copy as ResinRemoteModel).myJmxCredentialStore = myJmxCredentialStore
+    }
+
     override fun getEditor(): SettingsEditor<CommonModel> = RemoteRunConfigurationEditor(project)
 
     override fun getAddressesToCheck(): List<Pair<String, Int>> = Collections.emptyList()

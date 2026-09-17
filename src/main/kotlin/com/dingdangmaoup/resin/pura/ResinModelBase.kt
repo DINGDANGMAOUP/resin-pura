@@ -25,8 +25,8 @@ import com.intellij.openapi.util.WriteExternalException
 import com.intellij.util.xmlb.XmlSerializer
 import org.jdom.Element
 import java.io.File
-import java.lang.reflect.Modifier
-import java.util.HashSet
+import com.dingdangmaoup.resin.pura.resin.DeploymentTarget
+import com.dingdangmaoup.resin.pura.resin.jmx.JmxDeploymentClient
 
 abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     private var myData: D = createResinModelData()
@@ -115,21 +115,9 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     public override fun clone(): Any {
         try {
             val copy = javaClass.getDeclaredConstructor().newInstance()
-            var cls: Class<*>? = javaClass
-            while (cls != null && cls != Any::class.java) {
-                for (field in cls.declaredFields) {
-                    if (Modifier.isStatic(field.modifiers)) {
-                        continue
-                    }
-                    field.isAccessible = true
-                    field.set(copy, field.get(this))
-                }
-                cls = cls.superclass
-            }
-
-            // IntelliJ clones server models while building editable configuration snapshots.
-            // Keep platform/runtime collaborators shallow, but give persisted model data its
-            // own copy so a draft cannot mutate the live configuration before it is accepted.
+            if (::myCommonModel.isInitialized) copy.setCommonModel(myCommonModel)
+            copySnapshotCollaborators(copy)
+            // Only persisted data crosses into an editor snapshot. Runtime sessions and caches do not.
             val serializedData = Element("state")
             writeExternal(serializedData)
             copy.readExternal(serializedData)
@@ -140,6 +128,8 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
             throw cloneException
         }
     }
+
+    protected open fun copySnapshotCollaborators(copy: ResinModelBase<*>) {}
 
     override fun getLocalPort(): Int = port
 
@@ -155,12 +145,32 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
             throw RuntimeConfigurationError(ResinBundle.message("run.config.dlg.charset.error", charset))
         }
 
-        val contexts = HashSet<String>()
+        val targets = mutableSetOf<DeploymentTarget>()
         for (deploymentModel in getCommonModel().deploymentModels) {
-            val model = deploymentModel as ResinModuleDeploymentModel
-            val contextPath = model.contextPath
-            if (!model.isDefaultContextPath && !contexts.add(contextPath)) {
-                throw RuntimeConfigurationError(ResinBundle.message("error.duplicate.context.path.text", contextPath))
+            val webApp = ResinDeploymentProvider.getWebApp(deploymentModel)
+                ?: throw RuntimeConfigurationError(ResinBundle.message("deployment.source.missing"))
+            var target = webApp.target()
+            if (!target.contextPath.startsWith('/') || listOf(target.host, target.contextPath).any { '\n' in it || '\r' in it }) {
+                throw RuntimeConfigurationError(ResinBundle.message("deployment.target.invalid"))
+            }
+            val configurationMethod = deploymentModel.deploymentMethod == ResinDeploymentProvider.CONF_DEPLOYMENT_METHOD
+            if (configurationMethod) {
+                if (this !is ResinModel || isReadOnlyConfiguration()) {
+                    throw RuntimeConfigurationError(ResinBundle.message("deployment.config.read.only"))
+                }
+            } else {
+                val installation = installation
+                    ?: throw RuntimeConfigurationError(ResinBundle.message("message.error.resin.home.doesnt.exist"))
+                if (!hasJmxStrategy()) throw RuntimeConfigurationError(ResinBundle.message("deployment.jmx.unavailable"))
+                val archiveKey = JmxDeploymentClient(installation).getArchiveKey(File(requireNotNull(webApp.getLocation())))
+                JmxDeploymentClient.archiveTargetError(webApp, archiveKey)?.let {
+                    throw RuntimeConfigurationError(ResinBundle.message(it))
+                }
+                target = DeploymentTarget("default", if (archiveKey.equals("ROOT", true)) "/" else "/$archiveKey")
+            }
+            val normalizedTarget = target.copy(host = target.jmxHost)
+            if (!targets.add(normalizedTarget)) {
+                throw RuntimeConfigurationError(ResinBundle.message("error.duplicate.context.path.text", target.contextPath))
             }
         }
     }
@@ -182,6 +192,8 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
     protected abstract fun createResinModelData(): D
 
     abstract fun transferFile(webAppFile: File): Boolean
+
+    open fun validateTransferSource(webAppFile: File): Boolean = true
 
     abstract fun deleteFile(webAppFile: File): Boolean
 

@@ -9,6 +9,8 @@ import com.intellij.debugger.engine.DebugProcessListener
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.process.OSProcessHandler
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.execution.process.ProcessListener
+import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.javaee.appServers.serverInstances.DefaultJ2EEServerEvent
@@ -19,13 +21,30 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.io.FileUtil
 import java.io.IOException
 import java.io.StringWriter
+import com.dingdangmaoup.resin.pura.resin.DeploymentOperation
+import com.intellij.javaee.appServers.deployment.DeploymentModel
+import java.util.concurrent.ConcurrentHashMap
 
 class ResinServerInstance(runConfiguration: CommonModel) : DefaultServerInstance(runConfiguration) {
     private val myPoller = ServerInstancePoller()
+    @Volatile private var activeProcess: ProcessHandler? = null
+    internal val deploymentOperations = ConcurrentHashMap<DeploymentModel, DeploymentOperation>()
 
     fun getPoller(): ServerInstancePoller = myPoller
 
     override fun start(processHandler: ProcessHandler) {
+        val session = (serverModel as? ResinModel)?.runSession
+        activeProcess = processHandler
+        processHandler.addProcessListener(object : ProcessListener {
+            override fun processTerminated(event: ProcessEvent) {
+                if (activeProcess === processHandler) {
+                    myPoller.onInstanceShutdown()
+                    deploymentOperations.clear()
+                }
+                session?.close()
+                processHandler.removeProcessListener(this)
+            }
+        })
         super.start(processHandler)
         fireServerListeners(DefaultJ2EEServerEvent(true, false))
 
@@ -65,14 +84,22 @@ class ResinServerInstance(runConfiguration: CommonModel) : DefaultServerInstance
         )
 
         myPoller.onInstanceStart()
+        if (processHandler.isProcessTerminated) {
+            myPoller.onInstanceShutdown()
+            session?.close()
+        }
     }
 
     override fun shutdown() {
         myPoller.onInstanceShutdown()
+        deploymentOperations.clear()
         super.shutdown()
         val ph = processHandler
         if (ph is OSProcessHandler) {
             ph.process.destroy()
+        }
+        if (ph == null || ph.isProcessTerminated) {
+            (serverModel as? ResinModel)?.runSession?.close()
         }
     }
 

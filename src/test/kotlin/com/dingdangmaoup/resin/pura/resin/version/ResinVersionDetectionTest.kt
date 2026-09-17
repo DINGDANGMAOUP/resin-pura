@@ -26,7 +26,7 @@ class ResinVersionDetectionTest {
             val home = createResinHome()
             createResinJar(home)
 
-            val detected = ClassCallDetector.getResinVersion(home)
+            val detected = JarMetadataVersionDetector.getResinVersion(home)
 
             assertEquals("3.1.13", detected?.getVersionNumber())
             assertTrue(detected?.allowXdebug() == true)
@@ -47,7 +47,7 @@ class ResinVersionDetectionTest {
             val home = createResinHome()
             createResinJar(home, implementationVersion = "3.1.0")
 
-            val detected = ClassCallDetector.getResinVersion(home)
+            val detected = JarMetadataVersionDetector.getResinVersion(home)
 
             assertEquals("3.1.13", detected?.getVersionNumber())
             assertFalse(
@@ -64,7 +64,7 @@ class ResinVersionDetectionTest {
         val home = createResinHome()
         createResinJar(home, implementationVersion = "4.0.66", includeVersionClass = false)
 
-        val detected = ClassCallDetector.getResinVersion(home)
+        val detected = JarMetadataVersionDetector.getResinVersion(home)
 
         assertEquals("4.0.66", detected?.getVersionNumber())
     }
@@ -78,7 +78,7 @@ class ResinVersionDetectionTest {
             versionClassBytes = byteArrayOf(0x13, 0x37),
         )
 
-        val detected = ClassCallDetector.getResinVersion(home)
+        val detected = JarMetadataVersionDetector.getResinVersion(home)
 
         assertEquals("4.0.66", detected?.getVersionNumber())
     }

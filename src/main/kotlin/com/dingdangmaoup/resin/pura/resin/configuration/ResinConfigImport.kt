@@ -12,7 +12,7 @@ import java.io.IOException
 class ResinConfigImport(
     private val myRoot: Element,
     private val mySourceFile: File,
-) {
+) : AutoCloseable {
     private val myImportDoc: NullableLazyValue<Element> = object : NullableLazyValue<Element>() {
         override fun compute(): Element? {
             return try {
@@ -54,6 +54,10 @@ class ResinConfigImport(
             throw myCopyException as ExecutionException
         }
         myCopy?.save()
+    }
+
+    override fun close() {
+        myCopy?.close()
     }
 
     companion object {

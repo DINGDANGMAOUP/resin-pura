@@ -67,14 +67,13 @@ class Resin2XConfigurationStrategy : ResinConfigurationStrategy() {
 
     override fun undeploy(webApp: WebApp): Boolean {
         var dirty = false
-        val hosts = getElement().getChild(HTTP_SERVER).getChildren(HOST)
-        for (host in hosts) {
-            val webapps = host.getChildren(WEB_APP)
-            for (webappEl in webapps.toList()) {
-                if (webappEl.getAttribute(ID).value == webApp.getContextPath()) {
-                    host.removeContent(webappEl)
-                    dirty = true
-                }
+        val hosts = getElement().getChild(HTTP_SERVER)?.getChildren(HOST) ?: return false
+        val target = HostSelector.find(hosts, webApp.getHost(), allowRegexp = false) ?: return false
+        val webapps = target.getChildren(WEB_APP)
+        for (webappEl in webapps.toList()) {
+            if (webappEl.getAttributeValue(ID) == webApp.getContextPath()) {
+                target.removeContent(webappEl)
+                dirty = true
             }
         }
         return dirty
@@ -96,11 +95,7 @@ class Resin2XConfigurationStrategy : ResinConfigurationStrategy() {
 
         private fun getHost(parent: Element, webApp: WebApp): Element {
             val hosts = parent.getChildren(HOST)
-            for (host in hosts) {
-                if (host.getAttribute(ID).value == webApp.getHost()) {
-                    return host
-                }
-            }
+            HostSelector.find(hosts, webApp.getHost(), allowRegexp = false)?.let { return it }
             val host = Element(HOST)
             host.setAttribute(ID, webApp.getHost())
             host.setAttribute(DIRTY, "true")

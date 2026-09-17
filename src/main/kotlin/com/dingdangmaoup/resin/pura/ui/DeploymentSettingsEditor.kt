@@ -35,6 +35,9 @@ class DeploymentSettingsEditor(
             cell(myHostLabel)
             cell(myHostField).align(AlignX.FILL)
         }
+        row {
+            label(ResinBundle.message("deployment.jmx.scope.hint"))
+        }
     }
 
     init {

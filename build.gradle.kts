@@ -35,8 +35,12 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-//        local("filepath")
-        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+        val localPlatform = providers.gradleProperty("platformLocalPath")
+        if (localPlatform.isPresent) {
+            local(localPlatform)
+        } else {
+            create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+        }
         // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
 
@@ -101,7 +105,8 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            recommended()
+            val localIde = providers.gradleProperty("pluginVerifierLocalIde")
+            if (localIde.isPresent) local(localIde) else recommended()
         }
     }
 }
@@ -124,10 +129,6 @@ kover {
 }
 
 tasks {
-    wrapper {
-        gradleVersion = providers.gradleProperty("gradleVersion").get()
-    }
-
     // IntelliJ's production and test instrumenters share mutable state and can
     // fail nondeterministically when a clean build runs both tasks in parallel.
     named("instrumentTestCode") {

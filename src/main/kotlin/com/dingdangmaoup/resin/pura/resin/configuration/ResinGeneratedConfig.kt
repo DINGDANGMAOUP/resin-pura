@@ -8,7 +8,7 @@ import org.jdom.Element
 import java.io.File
 import java.io.IOException
 
-class ResinGeneratedConfig(element: Element?, prefix: String) {
+class ResinGeneratedConfig(element: Element?, prefix: String) : AutoCloseable {
     private val myElement: Element
     private val myFile: File
 
@@ -22,10 +22,20 @@ class ResinGeneratedConfig(element: Element?, prefix: String) {
         }
     }
 
+    private var closed = false
+
     fun getFile(): File = myFile
+
+    override fun close() {
+        if (!closed) {
+            FileUtil.delete(myFile)
+            closed = true
+        }
+    }
 
     @Throws(ExecutionException::class)
     fun save() {
+        check(!closed) { "Generated Resin configuration is closed" }
         try {
             JDOMUtil.write(myElement, myFile.toPath())
         } catch (e: IOException) {

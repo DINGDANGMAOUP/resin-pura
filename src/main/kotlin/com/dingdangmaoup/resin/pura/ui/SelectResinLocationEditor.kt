@@ -10,7 +10,9 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.util.text.StringUtil
+import com.intellij.util.concurrency.AppExecutorUtil
+import javax.swing.SwingUtilities
+import javax.swing.Timer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.panel
@@ -51,7 +53,16 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
     }
 
     private var suggestConfPath = false
-    private var myHasHomeError = false
+    private var resetting = false
+    private val detector = LatestRequestRunner<LocationRequest, LocationResult>(
+        AppExecutorUtil.getAppExecutorService(),
+        { action -> SwingUtilities.invokeLater(action) },
+        ::inspectLocation,
+        ::showResult,
+    )
+    private val detectionTimer = Timer(250) {
+        detector.submit(LocationRequest(resinHomeSelector.text, defaultResinConf.text, suggestConfPath))
+    }.apply { isRepeats = false }
 
     init {
         initChooser(
@@ -71,92 +82,62 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
 
         resinHomeSelector.textField.document.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(event: DocumentEvent) {
-                suggestConfPath = true
-                update()
+                if (!resetting) {
+                    suggestConfPath = true
+                    scheduleDetection()
+                }
             }
         })
 
         defaultResinConf.textField.document.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(event: DocumentEvent) {
-                suggestConfPath = false
-                updateConfPath()
+                if (!resetting) {
+                    suggestConfPath = false
+                    scheduleDetection()
+                }
             }
         })
 
-        includeAllResinjarsCheckbox.addChangeListener { update() }
         myErrorLabel.icon = AllIcons.General.BalloonError
-        update()
+        scheduleDetection()
     }
 
-    private fun update() {
-        val homePath = resinHomeSelector.text
-        myErrorLabel.text = ""
-
-        val installation = try {
-            ResinInstallation.create(homePath)
-        } catch (e: ExecutionException) {
-            myErrorLabel.text = e.message
-            myErrorLabel.isVisible = true
-            myHasHomeError = true
-            return
-        }
-
-        hideError()
-        myHasHomeError = false
-
-        if (!installation.isVersionDetected()) {
-            resinVersionLabel.text = ResinBundle.message("location.dlg.detected.version.unknown")
-        } else {
-            resinVersionLabel.text = installation.getVersion().toString()
-            if (suggestConfPath) {
-                var resinConfDef = File(homePath, FileUtil.toSystemDependentName(RESIN_CONF_FILE))
-                if (resinConfDef.exists()) {
-                    defaultResinConf.text = resinConfDef.absoluteFile.absolutePath
-                } else {
-                    resinConfDef = File(homePath, FileUtil.toSystemDependentName(OLD_RESIN_CONF_FILE))
-                    if (resinConfDef.exists()) {
-                        defaultResinConf.text = resinConfDef.absoluteFile.absolutePath
-                    }
-                }
-            }
-        }
-        updateConfPath()
-    }
-
-    private fun updateConfPath() {
-        if (myHasHomeError) return
-        val confFilePath = defaultResinConf.text
-        val confFile = if (StringUtil.isEmpty(confFilePath)) null else File(confFilePath)
-        if (confFile == null) {
-            showError(ResinBundle.message("message.error.resin.conf.doesnt.chosen"))
-            return
-        }
-        if (!confFile.exists()) {
-            showError(ResinBundle.message("message.error.resin.conf.doesnt.exist", ""))
-            return
-        }
-        if (confFile.isDirectory) {
-            showError(ResinBundle.message("message.error.resin.conf.directory", confFile.absolutePath))
-            return
-        }
-        hideError()
-    }
-
-    private fun showError(errorMsg: String) {
-        myErrorLabel.text = errorMsg
-        myErrorLabel.isVisible = true
-    }
-
-    private fun hideError() {
+    private fun scheduleDetection() {
+        detector.invalidate()
+        resinVersionLabel.text = ResinBundle.message("location.dlg.detecting")
         myErrorLabel.isVisible = false
+        detectionTimer.restart()
+    }
+
+    private fun showResult(result: LocationResult) {
+        resinVersionLabel.text = result.version
+        resetting = true
+        try {
+            defaultResinConf.text = result.configurationPath
+        } finally {
+            resetting = false
+        }
+        myErrorLabel.text = result.error ?: ""
+        myErrorLabel.isVisible = result.error != null
     }
 
     override fun resetEditorFrom(resinPersistentData: ResinPersistentData) {
-        suggestConfPath = resinPersistentData.RESIN_HOME.isEmpty()
-        resinHomeSelector.text = resinPersistentData.RESIN_HOME
-        includeAllResinjarsCheckbox.isSelected = resinPersistentData.INCLUDE_ALL_JARS
-        defaultResinConf.text = resinPersistentData.RESIN_CONF
-        update()
+        resetting = true
+        try {
+            suggestConfPath = resinPersistentData.RESIN_HOME.isEmpty()
+            resinHomeSelector.text = resinPersistentData.RESIN_HOME
+            includeAllResinjarsCheckbox.isSelected = resinPersistentData.INCLUDE_ALL_JARS
+            defaultResinConf.text = resinPersistentData.RESIN_CONF
+        } finally {
+            resetting = false
+        }
+        scheduleDetection()
+    }
+
+    override fun disposeEditor() {
+        detectionTimer.stop()
+        detector.close()
+        super.disposeEditor()
     }
 
     override fun applyEditorTo(data: ResinPersistentData) {
@@ -167,7 +148,33 @@ class SelectResinLocationEditor : ApplicationServerPersistentDataEditor<ResinPer
 
     override fun createEditor(): JComponent = mainPanel
 
+    private data class LocationRequest(val home: String, val configuration: String, val suggest: Boolean)
+    private data class LocationResult(val version: String, val configurationPath: String, val error: String?)
+
     companion object {
+        private fun inspectLocation(request: LocationRequest): LocationResult {
+            val installation = try {
+                ResinInstallation.create(request.home)
+            } catch (error: ExecutionException) {
+                return LocationResult("", request.configuration, error.message)
+            }
+            val detected = installation.isVersionDetected()
+            val version = if (detected) installation.getVersion().toString()
+                else ResinBundle.message("location.dlg.detected.version.unknown")
+            val suggestion = if (request.suggest && detected) {
+                listOf(RESIN_CONF_FILE, OLD_RESIN_CONF_FILE).map { File(request.home, it) }.firstOrNull { it.isFile }?.absolutePath
+            } else null
+            val configuration = suggestion ?: request.configuration
+            val file = File(configuration)
+            val error = when {
+                configuration.isEmpty() -> ResinBundle.message("message.error.resin.conf.doesnt.chosen")
+                !file.exists() -> ResinBundle.message("message.error.resin.conf.doesnt.exist", configuration)
+                file.isDirectory -> ResinBundle.message("message.error.resin.conf.directory", configuration)
+                else -> null
+            }
+            return LocationResult(version, configuration, error)
+        }
+
         private const val RESIN_CONF_FILE = "conf/resin.xml"
         private const val OLD_RESIN_CONF_FILE = "conf/resin.conf"
 
