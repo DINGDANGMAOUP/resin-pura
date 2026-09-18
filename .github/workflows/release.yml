@@ -137,15 +137,30 @@ jobs:
         with:
           name: release-plugin-zip
           path: ./release-artifacts
-      - name: Create Release
+      - name: Publish verified release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ needs.metadata.outputs.changelog }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.version }}
         run: |
           printf '%s\n' "$RELEASE_NOTES" > release-notes.md
-          gh release create "${{ needs.metadata.outputs.version }}" \
-            -R "${{ github.repository }}" \
-            --title "${{ needs.metadata.outputs.version }}" \
-            --notes-file release-notes.md \
-            ./release-artifacts/*.zip \
-            ./release-artifacts/SHA256SUMS
+          releases="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | [.tag_name, .draft] | @tsv')"
+          draft="$(awk -v tag="$RELEASE_TAG" '$1 == tag {print $2}' <<< "$releases")"
+          case "$draft" in
+            true)
+              gh release upload "$RELEASE_TAG" --clobber \
+                ./release-artifacts/*.zip ./release-artifacts/SHA256SUMS
+              ;;
+            '')
+              gh release create "$RELEASE_TAG" --draft --verify-tag \
+                --title "$RELEASE_TAG" --notes-file release-notes.md \
+                ./release-artifacts/*.zip ./release-artifacts/SHA256SUMS
+              ;;
+            *)
+              echo "::error::Release $RELEASE_TAG is already published or has duplicate entries"
+              exit 1
+              ;;
+          esac
+          gh release edit "$RELEASE_TAG" --draft=false --latest \
+            --title "$RELEASE_TAG" \
+            --notes-file release-notes.md
