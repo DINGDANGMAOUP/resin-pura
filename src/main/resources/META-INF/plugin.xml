@@ -15,7 +15,7 @@
     <category>Deployment</category>
     <extensions defaultExtensionNs="com.intellij">
         <configurationType implementation="com.dingdangmaoup.resin.pura.ResinConfigurationType"/>
-        <configurationProducer implementation="com.dingdangmaoup.resin.pura.ResinConfigurationProducer"/>
+        <runConfigurationProducer implementation="com.dingdangmaoup.resin.pura.ResinConfigurationProducer"/>
         <javaee.app.servers.integration.appServerIntegration implementation="com.dingdangmaoup.resin.pura.ResinManager"/>
     </extensions>
 </idea-plugin>

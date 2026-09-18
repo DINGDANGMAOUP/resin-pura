@@ -56,7 +56,7 @@ jobs:
             echo "Failed to read pluginVersion from gradle.properties"
             exit 1
           fi
-          CHANGELOG="$(./gradlew getChangelog --unreleased --no-header --console=plain -q)"
+          CHANGELOG="$(./gradlew getChangelog --no-header --console=plain -q --project-version="$VERSION")"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "pluginVerifierHomeDir=$HOME/.pluginVerifier" >> $GITHUB_OUTPUT
@@ -151,7 +151,7 @@ jobs:
           path: ${{ github.workspace }}/build/reports/pluginVerifier
 
   # Prepare a draft release for GitHub Releases page for the manual verification
-  # If accepted and published, release workflow would be triggered
+  # The tag-triggered release workflow attaches verified artifacts and publishes this draft.
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
@@ -200,5 +200,6 @@ jobs:
           printf '%s\n' "$RELEASE_NOTES" > release-notes.md
           gh release create "v${{ needs.metadata.outputs.version }}" \
             --draft \
+            --target "$GITHUB_SHA" \
             --title "v${{ needs.metadata.outputs.version }}" \
             --notes-file release-notes.md

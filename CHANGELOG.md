@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [4.1.6] - 2026-09-18
+
+### Fixed
+- Migrate context-based run configuration creation to the supported runConfigurationProducer extension point and LazyRunConfigurationProducer
+- Preserve generated deployment settings and build tasks, and reuse matching Resin configurations without discarding user customizations
+- Release process and debugger listeners even when a process exits before listener registration, and run termination cleanup only once
+- Publish verified release artifacts through the existing version draft instead of creating a duplicate release
+
 ## [4.1.5] - 2026-09-17
 
 ### Fixed

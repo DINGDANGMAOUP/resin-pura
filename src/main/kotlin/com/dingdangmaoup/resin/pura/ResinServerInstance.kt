@@ -9,8 +9,6 @@ import com.intellij.debugger.engine.DebugProcessListener
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.process.OSProcessHandler
 import com.intellij.execution.process.ProcessHandler
-import com.intellij.execution.process.ProcessListener
-import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.javaee.appServers.run.configuration.CommonModel
 import com.intellij.javaee.appServers.serverInstances.DefaultJ2EEServerEvent
@@ -24,34 +22,26 @@ import java.io.StringWriter
 import com.dingdangmaoup.resin.pura.resin.DeploymentOperation
 import com.intellij.javaee.appServers.deployment.DeploymentModel
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 class ResinServerInstance(runConfiguration: CommonModel) : DefaultServerInstance(runConfiguration) {
     private val myPoller = ServerInstancePoller()
-    @Volatile private var activeProcess: ProcessHandler? = null
+    private val activeProcess = AtomicReference<ProcessHandler?>()
     internal val deploymentOperations = ConcurrentHashMap<DeploymentModel, DeploymentOperation>()
 
     fun getPoller(): ServerInstancePoller = myPoller
 
     override fun start(processHandler: ProcessHandler) {
         val session = (serverModel as? ResinModel)?.runSession
-        activeProcess = processHandler
-        processHandler.addProcessListener(object : ProcessListener {
-            override fun processTerminated(event: ProcessEvent) {
-                if (activeProcess === processHandler) {
-                    myPoller.onInstanceShutdown()
-                    deploymentOperations.clear()
-                }
-                session?.close()
-                processHandler.removeProcessListener(this)
-            }
-        })
-        super.start(processHandler)
-        fireServerListeners(DefaultJ2EEServerEvent(true, false))
+        activeProcess.set(processHandler)
+        var removeDebugListener: () -> Unit = {}
+        try {
+            super.start(processHandler)
+            fireServerListeners(DefaultJ2EEServerEvent(true, false))
 
-        val resinModel = serverModel as ResinModelBase<*>
-        DebuggerManager.getInstance(resinModel.project).addDebugProcessListener(
-            processHandler,
-            object : DebugProcessListener {
+            val resinModel = serverModel as ResinModelBase<*>
+            val debuggerManager = DebuggerManager.getInstance(resinModel.project)
+            val debugListener = object : DebugProcessListener {
                 override fun processAttached(process: DebugProcess) {
                     if (resinModel is ResinModel) {
                         try {
@@ -80,13 +70,28 @@ class ResinServerInstance(runConfiguration: CommonModel) : DefaultServerInstance
                         })
                     }
                 }
-            },
-        )
+            }
 
-        myPoller.onInstanceStart()
-        if (processHandler.isProcessTerminated) {
-            myPoller.onInstanceShutdown()
-            session?.close()
+            removeDebugListener = { debuggerManager.removeDebugProcessListener(processHandler, debugListener) }
+            debuggerManager.addDebugProcessListener(processHandler, debugListener)
+            myPoller.onInstanceStart()
+        } finally {
+            // Register after startup so an early exit cannot be followed by restarting the poller.
+            // The helper checks an already terminated handler and always removes its listener.
+            onProcessTermination(processHandler) {
+                try {
+                    if (activeProcess.compareAndSet(processHandler, null)) {
+                        myPoller.onInstanceShutdown()
+                        deploymentOperations.clear()
+                    }
+                } finally {
+                    try {
+                        removeDebugListener()
+                    } finally {
+                        session?.close()
+                    }
+                }
+            }
         }
     }
 
