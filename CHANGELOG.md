@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [4.1.7] - 2026-11-10
+
+### Changed
+- Update the IntelliJ Platform target to `2026.3` and expand the compatible build range to `242–263.*`
+- Upgrade the IntelliJ Platform Gradle Plugin from `2.18.1` to `2.20.0`
+- Synchronize compatibility documentation and release links with the current repository
+
 ## [4.1.6] - 2026-09-18
 
 ### Fixed
@@ -101,10 +108,12 @@
 - JMX-based monitoring and control
 - Support for multiple Resin versions (2.x, 3.x, 4.x)
 
-[Unreleased]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.5...HEAD
-[4.1.5]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.4...v4.1.5
-[4.1.4]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.3...v4.1.4
-[4.1.3]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.2...v4.1.3
-[4.1.2]: https://github.com/dingdangmaoup/resin-pura/compare/v4.1.0...v4.1.2
-[4.1.0]: https://github.com/dingdangmaoup/resin-pura/releases/tag/v4.1.0
-[3.0.0]: https://github.com/dingdangmaoup/resin-pura/releases/tag/v3.0.0
+[Unreleased]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.7...HEAD
+[4.1.7]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.6...v4.1.7
+[4.1.6]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.5...v4.1.6
+[4.1.5]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.4...v4.1.5
+[4.1.4]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.3...v4.1.4
+[4.1.3]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.2...v4.1.3
+[4.1.2]: https://github.com/DINGDANGMAOUP/resin-pura/compare/v4.1.0...v4.1.2
+[4.1.0]: https://github.com/DINGDANGMAOUP/resin-pura/releases/tag/v4.1.0
+[3.0.0]: https://github.com/DINGDANGMAOUP/resin-pura/releases/tag/v3.0.0

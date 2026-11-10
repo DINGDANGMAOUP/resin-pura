@@ -39,7 +39,7 @@ Generated configuration files and copied imports belong to one run and are remov
 
 ### From GitHub Releases
 
-1. Download the latest plugin ZIP from [GitHub Releases](https://github.com/dingdangmaoup/resin-pura/releases)
+1. Download the latest plugin ZIP from [GitHub Releases](https://github.com/DINGDANGMAOUP/resin-pura/releases)
 2. In IntelliJ IDEA, go to `Settings/Preferences` → `Plugins` → `⚙️` → `Install Plugin from Disk...`
 3. Select the downloaded ZIP file
 4. Restart the IDE
@@ -84,7 +84,7 @@ The default verifier still checks the recommended IDE matrix; the local override
 
 ## Compatibility
 
-- IntelliJ IDEA 2024.2–2026.2 (Build 242–262.*)
+- IntelliJ IDEA 2024.2–2026.3 (Build 242–263.*)
 - IntelliJ IDEA Ultimate Edition
 
 The JDK 21 requirement above is for building the plugin. Select the Resin process JDK according to the particular Resin release and application; supporting a Resin configuration format does not guarantee that an old Resin release runs on a modern JDK. The plugin adds debug symbols without injecting a Java 5 source level, and preserves explicitly configured language levels.

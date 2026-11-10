@@ -95,7 +95,7 @@ abstract class ResinModelBase<D : ResinModelDataBase> : ServerModel, Cloneable {
 
     final override fun createServerInstance(): J2EEServerInstance = ResinServerInstance(getCommonModel())
 
-    // ABI bridge: both the 242 compatibility floor and 262 still declare this for-removal method as abstract.
+    // ABI bridge: both the 242 compatibility floor and 263 still declare this for-removal method as abstract.
     // ResinManager owns the provider through AppServerIntegration; keep the required nullable bridge only,
     // matching the platform's own JavaeeServerModel implementation until ServerModel removes the method.
     @Suppress("OVERRIDE_DEPRECATION")
